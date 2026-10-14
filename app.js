@@ -1,0 +1,1024 @@
+console.info('SIPANDAI v4.0 — GitHub Pages & Apps Script API');
+'use strict';
+const S={token:'',user:null,home:null,view:'dashboard',classId:'',childId:'',additional:{},att:null,attEdit:false,attMode:'HARIAN',attDate:'',attMapel:'',sessionNo:'1',busy:false,menuCache:new Map(),needsHome:false,attRequest:0,learningTab:'journal'};
+try { S.token=sessionStorage.getItem('sipandai_token')||''; } catch(e) {}
+const $=(q)=>document.querySelector(q);
+const E=(v)=>String(v===undefined||v===null?'':v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const fd=(form)=>Object.fromEntries(new FormData(form).entries());
+const role=(...names)=>!!S.user&&names.includes(S.user.role);
+const studentName=(id)=>((S.home?.students||[]).find(s=>s.id===id)||S.home?.currentChild||{}).name||'Siswa';
+const className=(id)=>((S.home?.classes||[]).find(c=>c.id===id)||{}).name||'Kelas';
+// Dialog internal SIPANDAI — menggantikan confirm/alert bawaan browser.
+const sipModalQueue=[];
+let sipModalActive=false;
+function sipDialog(message, options={}){
+  return new Promise(resolve=>{
+    sipModalQueue.push({message:String(message||''),options,resolve});
+    sipNextDialog();
+  });
+}
+function sipNextDialog(){
+  if(sipModalActive||!sipModalQueue.length)return;
+  sipModalActive=true;
+  const {message,options,resolve}=sipModalQueue.shift();
+  const isAlert=options.alert===true,destructive=options.danger===true;
+  const previous=document.activeElement;
+  const backdrop=document.createElement('div');
+  backdrop.className='sip-dialog-backdrop';
+  backdrop.innerHTML='<section class="sip-dialog-panel" role="alertdialog" aria-modal="true" aria-labelledby="sip-dialog-title" aria-describedby="sip-dialog-description" tabindex="-1">'+
+    '<div class="sip-dialog-icon" aria-hidden="true"></div><h2 id="sip-dialog-title"></h2><p id="sip-dialog-description"></p>'+
+    '<div class="sip-dialog-buttons"><button type="button" class="btn btn-outline sip-dialog-cancel">Batal</button><button type="button" class="btn btn-primary sip-dialog-ok">Lanjutkan</button></div></section>';
+  const panel=backdrop.querySelector('.sip-dialog-panel'), title=backdrop.querySelector('#sip-dialog-title'), description=backdrop.querySelector('#sip-dialog-description');
+  const cancel=backdrop.querySelector('.sip-dialog-cancel'),ok=backdrop.querySelector('.sip-dialog-ok');
+  title.textContent=options.title||(destructive?'Konfirmasi penghapusan':isAlert?'Informasi SIPANDAI':'Konfirmasi tindakan');
+  description.textContent=message;
+  backdrop.querySelector('.sip-dialog-icon').textContent=destructive?'!':isAlert?'i':'?';
+  if(destructive){backdrop.classList.add('sip-dialog-danger');ok.textContent=options.confirmText||'Ya, lanjutkan';}
+  else ok.textContent=options.confirmText||(isAlert?'Mengerti':'Lanjutkan');
+  if(isAlert)cancel.hidden=true;
+  document.body.appendChild(backdrop);
+  const finish=value=>{
+    document.removeEventListener('keydown',onKey,true);
+    backdrop.remove();sipModalActive=false;
+    try{previous?.focus?.();}catch(e){}
+    resolve(value);sipNextDialog();
+  };
+  const onKey=e=>{
+    if(e.key==='Escape'){e.preventDefault();finish(false);}
+    if(e.key==='Tab'){
+      const controls=isAlert?[ok]:[cancel,ok];const first=controls[0],last=controls[controls.length-1];
+      if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+      else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+    }
+  };
+  document.addEventListener('keydown',onKey,true);
+  cancel.addEventListener('click',()=>finish(false),{once:true});
+  ok.addEventListener('click',()=>finish(true),{once:true});
+  backdrop.addEventListener('click',e=>{if(e.target===backdrop&&!isAlert)finish(false);});
+  (isAlert?ok:cancel).focus();
+}
+function sipConfirm(message,options={}){return sipDialog(message,options);}
+function sipAlert(message,options={}){return sipDialog(message,{...options,alert:true});}
+function toast(msg,error=false){const t=$('#toast');t.textContent=msg;t.className='toast'+(error?' error':'');t.style.display='block';clearTimeout(window._toastTimer);window._toastTimer=setTimeout(()=>t.style.display='none',4100);}
+// v4.0: seluruh modul memakai transport API tunggal.
+async function call(action,payload={}){
+  const endpoint=String(window.SIPANDAI_CONFIG?.API_URL||'').trim();
+  if(!/^https:\/\/[^\s]+\/api\/?$/.test(endpoint)){
+    throw new Error('Alamat API belum diatur. Isi API_URL pada config.js setelah menyiapkan Cloudflare Worker.');
+  }
+  if(S.busy)processMessage(processLabel(action));
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),120000);
+  try{
+    const response=await fetch(endpoint,{
+      method:'POST',
+      mode:'cors',
+      cache:'no-store',
+      credentials:'omit',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action,payload,token:S.token||''}),
+      signal:controller.signal
+    });
+    let result;
+    try{result=await response.json();}
+    catch(_){throw new Error('Respons server bukan JSON. Periksa URL Worker dan deployment Apps Script.');}
+    if(!response.ok || !result || result.ok!==true){
+      throw new Error(result?.error||result?.message||('Permintaan gagal (HTTP '+response.status+').'));
+    }
+    return result.data;
+  }catch(err){
+    if(err?.name==='AbortError')throw new Error('Permintaan melewati 120 detik. Cek data sebelum mencoba menyimpan ulang.');
+    if(err instanceof TypeError)throw new Error('Tidak dapat menghubungi API SIPANDAI. Periksa koneksi, Worker, dan pengaturan domain GitHub Pages.');
+    throw err;
+  }finally{clearTimeout(timer);}
+}
+// Cache antarmuka singkat: pindah menu tidak selalu menunggu API.
+// Key termasuk identitas pengguna + kelas + parameter, sehingga tidak tertukar.
+function menuCacheKey(action,payload={}){return [S.user?.id||'',S.classId,action,JSON.stringify(payload)].join('|');}
+const pendingMenuRequests=new Map();
+function cachedCall(action,payload={},ttl=30000){
+  const key=menuCacheKey(action,payload),item=S.menuCache.get(key);
+  if(item&&Date.now()<item.until)return Promise.resolve(item.value);
+  if(pendingMenuRequests.has(key))return pendingMenuRequests.get(key);
+  const request=call(action,payload).then(value=>{
+    S.menuCache.set(key,{value,until:Date.now()+ttl});
+    if(S.menuCache.size>60)S.menuCache.delete(S.menuCache.keys().next().value);
+    return value;
+  }).finally(()=>pendingMenuRequests.delete(key));
+  pendingMenuRequests.set(key,request);
+  return request;
+}
+function forgetMenuCache(...actions){
+  for(const k of S.menuCache.keys())if(actions.some(a=>k.includes('|'+a+'|')))S.menuCache.delete(k);
+}
+let operationStarted=0, operationTimer=null;
+function processLabel(action){return ({login:'Memeriksa akun dan hak akses',logout:'Mengakhiri sesi',saveAttendance:'Menyimpan absensi siswa',saveJournal:'Menyimpan jurnal pembelajaran',saveAssessment:'Menyimpan asesmen',saveTask:'Menyimpan penugasan',addStudent:'Menyimpan data siswa',importStudents:'Mengimpor siswa dan akun orang tua',updateStudent:'Memperbarui siswa',saveBehavior:'Menyimpan catatan perilaku',changePassword:'Mengganti password',resetPassword:'Mereset password',saveGrades:'Menyimpan nilai'})[action]||(/^archive/i.test(action)?'Mengarsipkan data':'Menghubungi server SIPANDAI');}
+function processMessage(label){const e=document.getElementById('sip-process-label');if(e)e.textContent=label||'Memproses permintaan…';}
+function busy(state){
+  S.busy=state;
+  document.querySelectorAll('button[type=submit]').forEach(b=>b.disabled=state);
+  let overlay=document.getElementById('sip-process-overlay');
+  if(state){
+    if(!overlay){overlay=document.createElement('div');overlay.id='sip-process-overlay';overlay.className='sip-process-overlay';overlay.setAttribute('role','status');overlay.setAttribute('aria-live','polite');overlay.innerHTML='<div class="sip-process-panel"><div class="sip-process-ring"><span>✓</span></div><strong id="sip-process-label">Sedang memproses…</strong><p id="sip-process-time">Menghubungi server, mohon tunggu.</p><div class="sip-process-track"><span></span></div><small>Jangan tutup halaman sebelum proses selesai.</small></div>';document.body.appendChild(overlay);}
+    operationStarted=Date.now();
+    clearInterval(operationTimer);
+    const update=()=>{const seconds=Math.floor((Date.now()-operationStarted)/1000),e=document.getElementById('sip-process-time');if(e)e.textContent=seconds<5?'Menghubungi server SIPANDAI…':seconds<15?`Masih memproses (${seconds} detik)…`:`Masih bekerja (${seconds} detik). Koneksi atau Spreadsheet mungkin sedang lambat.`;};
+    update();operationTimer=setInterval(update,1000);
+  }else{clearInterval(operationTimer);operationTimer=null;overlay?.remove();}
+}
+
+async function submitAction(action,data,opt={}){
+  try{
+    busy(true);
+    const res=await call(action,data);
+    if(['createUser','resetPassword','createClass','createSubject','addStudent','assignTeacher','createParent','linkParent','reviewRequest','requestLink','saveNotice','publishNotice','confirmNotice','saveBehavior','publishBehavior','saveAttendance'].includes(action)){
+      S.needsHome=true;
+      if(action==='saveAttendance')forgetMenuCache('attendance');
+      if(['createParent','linkParent'].includes(action))forgetMenuCache('parents');
+      if(action==='reviewRequest'||action==='requestLink')forgetMenuCache('requests');
+    }
+    if(opt.credentials)showCredential(res);
+    else if(opt.message!==false)toast(res.message||'Data berhasil disimpan.');
+    if(opt.refresh!==false)await loadHome();
+    return res;
+  }catch(e){toast(e.message,true);}finally{busy(false);}
+}
+function showCredential(c){const node=$('#credential-box');if(node){node.innerHTML=`<div class="credential"><b>Simpan dan sampaikan secara privat</b><div class="section-gap">Username: <code>${E(c.username)}</code></div><div>Password sementara: <code>${E(c.password)}</code></div><p class="hint">Password ini hanya ditampilkan sekali. Pemilik akun harus menggantinya saat login pertama.</p><button type="button" class="btn btn-sm" data-action="copy-credential" data-value="${E('Username: '+c.username+'\nPassword: '+c.password)}">Salin kredensial</button></div>`;node.scrollIntoView({behavior:'smooth',block:'nearest'});}else{void sipAlert('Username: '+c.username+'\nPassword: '+c.password+'\n\nSimpan dengan aman.',{title:'Kredensial akun'});}}
+function fillOptions(arr,selected='',placeholder='Pilih...'){return `<option value="">${E(placeholder)}</option>`+arr.map(x=>`<option value="${E(x.id)}" ${String(x.id)===String(selected)?'selected':''}>${E(x.name)}</option>`).join('');}
+function head(title,description,action=''){return `<div class="page-header"><div><h1>${E(title)}</h1><p>${E(description)}</p></div>${action}</div>`;}
+function empty(msg){return `<div class="empty">${E(msg)}</div>`;}
+function loader(){return '<div class="loader sip-data-loader" role="status"><div class="sip-loader-art"><span></span><span></span><span></span></div><strong>Menyiapkan data…</strong><span class="small muted">Mengambil informasi dari Spreadsheet</span></div>';}
+const MENUS={learning:['▤','Teacher Planner'],progress:['◴','Perkembangan'],journal:['▤','Teacher Planner'],assessments:['◈','Asesmen & Nilai'],tasks:['▧','Penugasan'],dashboard:['◫','Beranda'],notices:['◉','Pengumuman'],attendance:['▦','Absensi'],behaviors:['♡','Perilaku'],tahfidz:['◉','Tahfidz'],students:['♧','Siswa'],teachers:['▤','Guru Mapel'],parents:['⌂','Keluarga'],requests:['✓','Verifikasi'],users:['♙','Akun Guru'],classes:['▣','Kelas & Mapel'],printing:['▤','Cetak & Laporan'],settings:['⚙','Pengaturan'],more:['☰','Lainnya']};
+function menuItems(){
+  // Modul utama saja di sidebar; kegiatan Absensi & Perilaku merupakan tab Teacher Planner.
+  const all=['dashboard','learning','tahfidz','notices'];
+  if(!role('GURU_MAPEL'))all.push('progress');
+  if(role('ADMIN','GURU_KELAS'))all.push('students','teachers','parents','requests');
+  if(role('ORANG_TUA'))all.push('parents');
+  if(role('ADMIN'))all.push('users','classes');
+  all.push('printing','settings');
+  return all;
+}
+const MOBILE_NAV=['dashboard','learning','tahfidz','notices','more'];
+function navButton(id,mobile=false){
+  const active=S.view===id||(id==='learning'&&isLearningView(S.view));
+  const label=id==='learning'&&role('ORANG_TUA')?'Pembelajaran':MENUS[id][1];
+  return `<button type="button" data-action="nav" data-view="${id}" class="${mobile?'mobile-nav-btn':'nav-btn'} ${active?'active':''}" ${mobile?`aria-label="${E(label)}"`:''}><span class="sym" aria-hidden="true">${MENUS[id][0]}</span><span class="nav-label">${E(label)}</span></button>`;
+}
+function otherMenuItems(){return menuItems().filter(id=>!MOBILE_NAV.includes(id));}
+function baseUI(){
+  const initials=(S.user.fullName||'S').split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();
+  const cs=S.home?.classes||[];
+  $('#app').innerHTML=`<div class="layout"><aside class="sidebar"><div class="brand"><span class="logo">S</span><div><div class="logo-name">SIPANDAI</div><div class="small muted">Sekolah & Keluarga</div></div></div><nav class="nav" aria-label="Navigasi utama">${menuItems().map(id=>navButton(id)).join('')}</nav><div class="side-bottom"><div class="small muted">${E(S.user.role.replace('_',' '))}</div><b>${E(S.user.fullName)}</b><div class="section-gap"><button class="btn btn-outline btn-full" data-action="logout">Keluar akun</button></div></div></aside><main class="main"><header class="topbar"><div class="brand"><span class="logo" style="width:35px;height:35px;font-size:16px">S</span><div><b>SIPANDAI</b><small>Informasi Pembelajaran & Pendampingan Anak</small></div></div><div class="topright">${cs.length>1&&!role('ORANG_TUA')?`<select class="select-small" id="switch-class" aria-label="Pilih kelas">${cs.map(c=>`<option value="${E(c.id)}" ${c.id===S.classId?'selected':''}>${E(c.name)}</option>`).join('')}</select>`:''}<span class="avatar">${E(initials)}</span><span class="name"><b>${E(S.user.fullName)}</b><small>${E(S.user.role.replaceAll('_',' '))}</small></span><button type="button" class="topbar-mobile-logout" data-action="logout" aria-label="Keluar akun">⇥ <span>Keluar</span></button></div></header><div id="content" class="main-content"></div></main></div><div id="mobile-more" class="mobile-more" role="dialog" aria-label="Menu lainnya" aria-hidden="true"><div class="mobile-more-title"><b>Menu Lainnya</b><button type="button" class="mobile-more-close" data-action="close-more" aria-label="Tutup menu">✕</button></div><nav aria-label="Menu tambahan">${otherMenuItems().map(id=>navButton(id)).join('')}</nav><div class="mobile-more-profile"><div class="small muted">${E(S.user.role.replaceAll('_',' '))}</div><b>${E(S.user.fullName)}</b></div><button type="button" class="btn btn-outline btn-full mobile-more-logout" data-action="logout">⇥ Keluar Akun</button></div><nav class="mobilebar" aria-label="Navigasi utama ponsel">${MOBILE_NAV.map(x=>navButton(x,true)).join('')}</nav>`;
+}
+function toggleMobileMore(open){
+  const el=document.getElementById('mobile-more');if(!el)return;
+  const next=typeof open==='boolean'?open:!el.classList.contains('open');
+  el.classList.toggle('open',next);
+  el.setAttribute('aria-hidden',String(!next));
+  const trigger=document.querySelector('.mobilebar [data-view="more"]');
+  if(trigger)trigger.setAttribute('aria-expanded',String(next));
+  if(next)el.querySelector('.mobile-more-close')?.focus();
+  else if(el.contains(document.activeElement))trigger?.focus();
+}
+function loginUI(){S.user=null;$('#app').innerHTML=`<div class="login-wrap"><div class="login-card"><div class="brand"><span class="logo">S</span><div><div class="logo-name">SIPANDAI</div><div class="small muted">Sekolah dan keluarga, saling terhubung</div></div></div><h1>Selamat datang kembali</h1><p class="muted">Masuk untuk melihat aktivitas pembelajaran dan perkembangan anak.</p><form id="login-form"><div class="field"><label class="label">Username / NIS</label><input name="username" autocomplete="username" required placeholder="Masukkan username atau NIS"></div><div class="field"><label class="label">Password</label><input name="password" type="password" autocomplete="current-password" required placeholder="Masukkan password"></div><button type="submit" class="btn btn-primary btn-full">Masuk ke SIPANDAI →</button></form><div class="login-foot">Orang tua menggunakan NIS atau username akun keluarga dan password yang diberikan oleh guru kelas. Jika lupa password, hubungi guru kelas.</div></div></div>`;}
+function passwordUI(){ $('#app').innerHTML=`<div class="login-wrap"><div class="login-card"><div class="brand"><span class="logo">S</span><b class="logo-name">SIPANDAI</b></div><h1>Ganti password awal</h1><p class="muted">Untuk menjaga data siswa, password sementara wajib diganti sebelum mengakses aplikasi.</p>${changePasswordForm()}<button class="btn btn-outline btn-full section-gap" data-action="logout">Keluar akun</button></div></div>`;}
+function changePasswordForm(){return `<form id="change-password-form"><div class="field"><label class="label">Password saat ini</label><input type="password" name="oldPassword" required autocomplete="current-password"></div><div class="field"><label class="label">Password baru</label><input type="password" name="newPassword" minlength="5" required autocomplete="new-password" placeholder="Minimal 5 karakter; angka, huruf, atau campuran"></div><button class="btn btn-primary" type="submit">Simpan password baru</button></form>`;}
+async function loadHome(){const home=await call('home',{classId:S.classId,childId:S.childId});S.needsHome=false;S.home=home;S.user=home.user;if(S.user.role==='GURU_MAPEL')S.attMode='MAPEL';S.classId=home.classId;S.childId=home.currentChild?.id||'';if(S.user.mustChangePassword){passwordUI();return;}baseUI();render();}
+function render(){if(!S.home)return;document.querySelectorAll('[data-action=nav]').forEach(el=>el.classList.toggle('active',el.dataset.view===S.view||(el.dataset.view==='learning'&&isLearningView(S.view))));switch(S.view){case 'tahfidz':return renderTahfidz();case 'journal':return renderJournal();case 'assessments':return renderAssessments();case 'tasks':return renderTasks();case 'progress':return renderProgress();case 'dashboard':return renderDashboard();case 'printing':return renderPrinting();case 'notices':return renderNotices();case 'attendance':return renderAttendance();case 'behaviors':return renderBehaviors();case 'students':return renderStudents();case 'teachers':return renderTeachers();case 'parents':return renderParents();case 'requests':return renderRequests();case 'users':return renderUsers();case 'classes':return renderClasses();case 'settings':return renderSettings();default:S.view='dashboard';renderDashboard();}}
+const LEARNING_VIEWS=['attendance','journal','assessments','tasks','behaviors'];
+function isLearningView(id){return LEARNING_VIEWS.includes(id);}
+function learningTabs(){
+  const parent=role('ORANG_TUA');
+  const tabs=[
+    ['attendance','▦','Absen'],
+    ['journal','▤','Teacher Planner & Jurnal'],
+    ['assessments','◈','Asesmen & Nilai'],
+    ['tasks','▧','Penugasan'],
+    ['behaviors','♡','Perilaku']
+  ].filter(x=>!parent||!['attendance','journal'].includes(x[0]));
+  return `<nav class="module-tabs" aria-label="Bagian Teacher Planner">${tabs.map(x=>`<button type="button" class="module-tab ${S.view===x[0]?'active':''}" data-action="learning-tab" data-tab="${x[0]}" aria-current="${S.view===x[0]?'page':'false'}"><span aria-hidden="true">${x[1]}</span>${x[2]}</button>`).join('')}</nav>`;
+}
+function tahCacheContext(){return [S.user?.id||'',S.classId,S.childId||''].join('|');}
+function clearTahDom(){if(typeof TAH!=='undefined')TAH.savedDom=null;}
+function setContent(html){
+ const content=$('#content');if(!content)return;
+ // Simpan DOM Tahfidz sebenarnya (termasuk state form) saat berpindah menu.
+ // Tidak membuat snapshot HTML: pilihan/form dan listener browser tetap utuh.
+ if(S.view!=='tahfidz'&&content.querySelector('#tah-main')&&typeof TAH!=='undefined'&&((role('ORANG_TUA')&&TAH.detail)||(!role('ORANG_TUA')&&TAH.klass&&TAH.settings))&&TAH.viewClass===S.classId){
+   const fragment=document.createDocumentFragment();
+   while(content.firstChild)fragment.appendChild(content.firstChild);
+   TAH.savedDom={fragment,context:tahCacheContext()};
+ }
+ content.innerHTML=isLearningView(S.view)?learningTabs()+html:html;
+}
+function stat(label,value,sub=''){return `<div class="card stat"><div class="meta">${E(label)}</div><div class="value">${E(value)}</div><div class="meta">${E(sub)}</div></div>`;}
+function childCards(){const children=S.home.children||[];return `<div class="child-grid">${children.map(c=>`<button type="button" class="child-card ${S.childId===c.id?'selected':''}" data-action="switch-child" data-id="${E(c.id)}"><div class="row"><span class="badge-round">🎒</span><div><div class="child-name">${E(c.name)}</div><div class="small muted">NIS ${E(c.nis)} · ${E(className(c.classId))}</div></div></div></button>`).join('')}</div>`;}
+function renderDashboard(){const x=S.home,st=x.stats,cl=className(x.classId);const parent=role('ORANG_TUA');let html=head(parent?'Portal keluarga':'Ringkasan kegiatan',parent?'Informasi belajar putra-putri Anda, dalam satu akun.':'Pantau aktivitas kelas dan informasi terbaru.');
+  if(parent)html+=`<div class="card"><div class="panel-title">Anak terhubung <span class="pill green">${x.children.length} anak</span></div>${x.children.length?childCards():empty('Belum ada anak yang terhubung. Silakan ajukan penghubungan melalui menu Keluarga.')}</div>`;
+  else html+=`<div class="notice">Kelas aktif: <b>${E(cl)}</b>. ${role('ADMIN')?'Mulailah dengan membuat akun Guru Kelas, kemudian kelas dan siswa.':role('KEPALA_SEKOLAH')?'Akun Kepala Sekolah memiliki akses monitoring.':'Input satu kali akan digunakan sebagai informasi kelas dan orang tua.'}</div>`;
+  html+=`<div class="grid grid4 section-gap">${parent?'':stat('Siswa di kelas',st.students)}${stat('Pengumuman terbit',st.notices)}${stat(parent?'Hari hadir tercatat':'Hadir hari ini',st.present||0,parent?`Dari ${st.daysRecorded||0} hari tercatat`:`Dari ${st.todayRecorded||0} absensi masuk`)}${stat('Catatan perilaku',st.behaviors)}</div>`;
+  html+=`<div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Pengumuman terbaru <button type="button" class="btn btn-sm" data-action="nav" data-view="notices">Lihat semua</button></div><div class="stack">${x.notices.filter(a=>a.status==='PUBLISHED').slice(0,4).map(n=>`<div class="item"><div class="small muted">${E(n.createdAt.slice(0,10))} · ${E(n.scope==='SEKOLAH'?'Sekolah':className(n.classId))}</div><h3>${E(n.title)}</h3><p class="small">${E(n.body.slice(0,180))}</p></div>`).join('')||empty('Belum ada pengumuman.')}</div></div><div class="card"><div class="panel-title">Catatan perkembangan perilaku <button type="button" class="btn btn-sm" data-action="nav" data-view="behaviors">Selengkapnya</button></div><div class="stack">${x.behaviors.slice(0,4).map(b=>`<div class="item"><div class="item-head"><span class="pill ${b.kind==='POSITIF'?'green':'yellow'}">${b.kind==='POSITIF'?'Apresiasi':'Pembinaan'}</span><span class="small muted">${E(b.createdAt.slice(0,10))}</span></div><h3>${E(parent?'Untuk '+(x.currentChild?.name||'anak'):studentName(b.studentId))}</h3><p class="small">${E(b.description.slice(0,155))}</p></div>`).join('')||empty('Belum ada catatan perilaku.')}</div></div></div>`;
+  if(!parent)html+=`<div class="card section-gap"><div class="panel-title">Akses cepat</div><div class="actions"><button class="btn" data-action="nav" data-view="notices">📢 Pengumuman kelas</button><button class="btn" data-action="nav" data-view="attendance">📋 Absensi kelas</button><button class="btn" data-action="nav" data-view="behaviors">♡ Catatan perilaku</button><button class="btn" data-action="nav" data-view="journal">📖 Teacher Planner</button><button class="btn" data-action="nav" data-view="tahfidz">📗 Tahfidz & Murojaah</button><button class="btn" data-action="nav" data-view="assessments">✦ Asesmen</button><button class="btn" data-action="nav" data-view="tasks">📝 Penugasan</button>${!role('GURU_MAPEL')?'<button class="btn" data-action="nav" data-view="progress">📈 Perkembangan Belajar</button>':''}${role('ADMIN','GURU_KELAS')?'<button class="btn" data-action="nav" data-view="students">♧ Data siswa</button>':''}</div></div>`;
+  setContent(html);
+}
+function renderNotices(){const x=S.home,can=role('ADMIN','GURU_KELAS','GURU_MAPEL'),parent=role('ORANG_TUA');let html=head('Papan pengumuman','Jadwal, ujian, agenda, dan informasi penting untuk keluarga.');
+  if(can)html+=`<div class="card"><div class="panel-title">Tulis pengumuman baru</div><form id="notice-form"><div class="form-grid"><div class="field"><label class="label">Judul</label><input name="title" maxlength="120" required placeholder="Contoh: Ujian Matematika"></div><div class="field"><label class="label">Jangkauan</label><select name="scope"><option value="KELAS">Kelas aktif</option>${role('ADMIN')?'<option value="SEKOLAH">Seluruh sekolah</option>':''}</select></div><div class="wide field"><label class="label">Isi pengumuman</label><textarea name="body" maxlength="3500" required placeholder="Informasi yang perlu disampaikan..."></textarea></div><div class="field"><label class="label">Status</label><select name="status"><option value="PUBLISHED">Publikasikan sekarang</option><option value="DRAFT">Simpan draft</option></select></div><div class="field"><label class="label">Konfirmasi orang tua</label><select name="requireConfirm"><option value="">Tidak wajib</option><option value="YES">Memerlukan konfirmasi dibaca</option></select></div></div><button type="submit" class="btn btn-primary">Simpan pengumuman</button></form></div>`;
+  html+=`<div class="card section-gap"><div class="panel-title">Daftar pengumuman <span class="pill">${x.notices.length}</span></div><div class="stack">${x.notices.map(n=>`<div class="item"><div class="item-head"><span class="pill ${n.status==='PUBLISHED'?'green':'yellow'}">${E(n.status==='PUBLISHED'?'Terbit':'Draft')}</span><span class="small muted">${E(n.createdAt.slice(0,10))} · ${E(n.scope==='SEKOLAH'?'Sekolah':className(n.classId))}</span></div><h3 style="margin-top:9px">${E(n.title)}</h3><p>${E(n.body)}</p>${can&&n.status==='DRAFT'&&(role('ADMIN')||n.authorId===S.user.id||role('GURU_KELAS'))?`<div class="actions"><button class="btn btn-sm btn-primary" data-action="publish-notice" data-id="${E(n.id)}">Terbitkan draft</button></div>`:''}${n.requireConfirm==='YES'?`<div class="section-gap">${parent? n.confirmed?'<span class="pill green">✓ Sudah dikonfirmasi</span>':`<button class="btn btn-sm btn-primary" data-action="confirm-notice" data-id="${E(n.id)}">Saya sudah membaca</button>`:'<span class="pill">Meminta konfirmasi orang tua</span>'}</div>`:''}</div>`).join('')||empty('Belum ada pengumuman.')}</div></div>`;setContent(html);
+}
+function renderAttendance(){if(role('GURU_MAPEL'))S.attMode='MAPEL';if(role('ORANG_TUA')){S.view='dashboard';render();return;}const x=S.home,mode=S.attMode,write=role('ADMIN','GURU_KELAS','GURU_MAPEL');if(!S.attDate)S.attDate=x.serverDate;if(!x.subjects.some(s=>s.id===S.attMapel))S.attMapel=x.subjects[0]?.id||'';
+  const html=head('Absensi siswa','Absensi harian hanya satu kali per kelas; absensi mapel dicatat per sesi.')+`<div class="card"><div class="form-grid"><div class="field"><label class="label">Jenis absensi</label><select id="att-mode">${role('GURU_MAPEL')?'':`<option value="HARIAN" ${mode==='HARIAN'?'selected':''}>Harian</option>`}<option value="MAPEL" ${mode==='MAPEL'?'selected':''}>Per mata pelajaran</option></select></div><div class="field"><label class="label">Tanggal</label><input id="att-date" type="date" value="${E(S.attDate)}"></div>${mode==='MAPEL'?`<div class="field"><label class="label">Mata pelajaran</label><select id="att-subject">${fillOptions(x.subjects,S.attMapel,'Pilih mapel')}</select></div><div class="field"><label class="label">Sesi</label><select id="att-session">${Array.from({length:5},(_,i)=>`<option value="${i+1}" ${S.sessionNo===String(i+1)?'selected':''}>Sesi ${i+1}</option>`).join('')}</select></div>`:''}</div><div class="actions"><button class="btn btn-primary" data-action="load-att">Tampilkan absensi</button></div></div><div id="att-content" class="section-gap">${loader()}</div>`;
+  setContent(html);
+  const payload={classId:S.classId,date:S.attDate,mode:S.attMode,mapelId:S.attMapel,sessionNo:S.sessionNo};
+  const cached=S.menuCache.get(menuCacheKey('attendance',payload));
+  if(cached&&Date.now()<cached.until)paintAttendance(cached.value);
+  else loadAttendance();
+}
+async function loadAttendance(){
+  if(!S.home.classId){const h=$('#att-content');if(h)h.innerHTML=empty(role('GURU_MAPEL')?'Belum ada kelas atau mapel yang ditugaskan kepada akun Anda. Minta Guru Kelas menetapkan pengampu pada menu Guru Mapel.':'Buat atau pilih kelas terlebih dahulu.');return;}
+  if(S.attMode==='MAPEL'&&!S.attMapel){const h=$('#att-content');if(h)h.innerHTML=empty('Tidak ada mata pelajaran yang ditugaskan ke akun ini. Guru Kelas perlu mengatur pengampu.');return;}
+  try{
+    const req={classId:S.classId,date:S.attDate,mode:S.attMode,mapelId:S.attMapel,sessionNo:S.sessionNo};
+    const reqNo=++S.attRequest,res=await cachedCall('attendance',req,45000);
+    if(reqNo!==S.attRequest||S.view!=='attendance')return;
+    paintAttendance(res);
+  }catch(err){const h=$('#att-content');if(h)h.innerHTML='<div class="notice warning">'+E(err.message)+'</div>';}
+}
+function paintAttendance(res){
+  S.att=res;
+  if(!res.hasSaved)S.attEdit=true;
+  const unlocked=res.editable&&(!res.hasSaved||S.attEdit);
+  const area=$('#att-content');if(!area)return;
+  if(!res.rows.length){area.innerHTML=empty('Belum ada siswa di kelas ini.');return;}
+  area.innerHTML=`<div class="card"><div class="row-between"><div><h2>Daftar kehadiran</h2><p class="small muted">${res.hasSaved?(unlocked?'Sedang mengedit absensi yang tersimpan.':'✓ Absensi sudah tersimpan dan terkunci. Klik Edit Absensi jika perlu koreksi.'):'Belum disimpan. Semua siswa disiapkan sebagai Hadir.'}</p></div>${unlocked?'<button class="btn btn-sm" data-action="all-present">Semua hadir</button>':''}</div><form id="attendance-form"><div class="att-list section-gap">${res.rows.map((r,i)=>`<div class="att-student" data-student-id="${E(r.id)}"><div class="att-person"><span class="att-number">${i+1}</span><div><b>${E(r.name)}</b><span class="att-nis">NIS ${E(r.nis)}</span></div></div><div class="att-controls"><select class="att-status att-hidden-select" aria-label="Kehadiran ${E(r.name)}" ${unlocked?'':'disabled'}>${[['H','Hadir'],['S','Sakit'],['I','Izin'],['A','Alpa']].map(([v,t])=>`<option value="${v}" ${r.status===v?'selected':''}>${t}</option>`).join('')}</select><div class="att-choice" role="group" aria-label="Status kehadiran ${E(r.name)}">${[['H','Hadir'],['S','Sakit'],['I','Izin'],['A','Alpa']].map(([v,t])=>`<button type="button" class="att-choice-btn ${r.status===v?'selected':''} ${'att-'+v}" data-action="select-att-status" data-status="${v}" aria-pressed="${r.status===v}" ${unlocked?'':'disabled'}>${t}</button>`).join('')}</div><button type="button" class="att-note-toggle" data-action="toggle-att-note" title="Catatan siswa" aria-label="Buka catatan ${E(r.name)}">✎</button></div><div class="att-note-container" style="display:${r.note?'block':'none'}"><input class="att-note" value="${E(r.note)}" maxlength="200" placeholder="Catatan (opsional)" ${unlocked?'':'disabled'}></div></div>`).join('')}</div>${unlocked?`<div class="actions section-gap"><button class="btn btn-primary" type="submit">${res.hasSaved?'Simpan perubahan':'Simpan semua absensi'}</button>${res.hasSaved?'<button type="button" class="btn" data-action="cancel-att-edit">Batal edit</button>':''}</div>`:res.editable&&res.hasSaved?'<div class="actions section-gap"><span class="pill green">✓ Tersimpan · terkunci</span><button type="button" class="btn" data-action="edit-attendance">Edit Absensi</button></div>':'<p class="hint">Hanya tersedia untuk monitoring.</p>'}</form></div>`;
+}
+function renderBehaviors(){const x=S.home,parent=role('ORANG_TUA'),can=role('ADMIN','GURU_KELAS','GURU_MAPEL');let html=head('Catatan perilaku','Apresiasi hal positif dan pendampingan yang perlu perhatian.');
+  if(can)html+=`<div class="card"><div class="panel-title">Tambah catatan</div><form id="behavior-form"><div class="form-grid"><div class="field"><label class="label">Siswa</label><select name="studentId" required>${fillOptions(x.students,'','Pilih siswa')}</select></div><div class="field"><label class="label">Kategori</label><select name="kind"><option value="POSITIF">Positif / apresiasi</option><option value="PEMBINAAN">Perlu pembinaan</option></select></div><div class="wide field"><label class="label">Deskripsi kejadian</label><textarea name="description" maxlength="2500" required placeholder="Tuliskan kejadian secara objektif..."></textarea></div><div class="wide field"><label class="label">Tindak lanjut (opsional)</label><textarea name="followUp" maxlength="1200" placeholder="Pendampingan guru atau yang dapat dilakukan di rumah..."></textarea></div><div class="field"><label class="label">Dokumentasi (opsional)</label><input type="file" id="behavior-file" accept="image/jpeg,image/png,application/pdf"><p class="hint">Foto JPG/PNG atau PDF, maksimal 3 MB.</p></div><div class="field"><label class="label">Publikasi</label><select name="status"><option value="DRAFT">Draft / untuk internal</option><option value="PUBLISHED">Terlihat oleh orang tua</option></select></div></div><button type="submit" class="btn btn-primary">Simpan catatan</button></form></div>`;
+  html+=`<div class="card section-gap"><div class="panel-title">Riwayat catatan</div><div class="stack">${x.behaviors.map(b=>`<div class="item"><div class="item-head"><span class="pill ${b.kind==='POSITIF'?'green':'yellow'}">${b.kind==='POSITIF'?'Apresiasi':'Perlu pembinaan'}</span><span class="small muted">${E(b.createdAt.slice(0,10))}</span></div><h3 style="margin-top:9px">${E(parent?(x.currentChild?.name||'Anak Anda'):studentName(b.studentId))}</h3><p>${E(b.description)}</p>${b.followUp?`<p class="small section-gap"><b>Tindak lanjut:</b> ${E(b.followUp)}</p>`:''}<div class="actions">${b.status==='DRAFT'?'<span class="pill yellow">Draft / internal</span>':''}${can&&b.status==='DRAFT'&&(role('ADMIN')||b.authorId===S.user.id||role('GURU_KELAS'))?`<button class="btn btn-sm btn-primary" data-action="publish-behavior" data-id="${E(b.id)}">Publikasikan ke orang tua</button>`:''}${b.fileName?`<button class="btn btn-sm btn-outline" data-action="view-file" data-id="${E(b.id)}">📎 Lihat ${E(b.fileName)}</button>`:''}${can&&(role('ADMIN','GURU_KELAS')||b.authorId===S.user.id)?`<button class="btn btn-sm" data-action="archive-behavior" data-id="${E(b.id)}">Hapus catatan</button>`:''}</div></div>`).join('')||empty('Belum ada catatan perilaku.')}</div></div>`;
+  setContent(html);
+}
+
+function parseImportStudents(text){
+  const lines=String(text||'').replace(/^\uFEFF/,'').replace(/\r/g,'').split('\n').filter(x=>x.trim());
+  if(!lines.length)throw new Error('Pilih file CSV atau tempel daftar siswa dahulu.');
+  const delimiter=lines[0].includes('\t')?'\t':lines[0].includes(';')?';':',';
+  const rows=lines.map(line=>{
+    const cells=[];let v='',quoted=false;
+    for(let i=0;i<line.length;i++){let c=line[i];if(c==='"'){if(quoted&&line[i+1]==='"'){v+='"';i++;}else quoted=!quoted;}else if(c===delimiter&&!quoted){cells.push(v.trim());v='';}else v+=c;}
+    cells.push(v.trim());return cells;
+  });
+  if(/^nis$/i.test(rows[0][0].trim()))rows.shift();
+  if(!rows.length)throw new Error('File tidak berisi siswa.');
+  if(rows.some(x=>x.length!==2||!x[0]||!x[1]))throw new Error('Setiap baris wajib memiliki dua kolom: NIS dan Nama Siswa.');
+  if(rows.length>100)throw new Error('Maksimal 100 siswa sekali impor. Pecah file menjadi beberapa bagian.');
+  return rows.map(x=>({nis:x[0],name:x[1]}));
+}
+async function importStudentBatch(){
+  const out=$('#import-result'),file=$('#import-csv-file')?.files?.[0];
+  try{
+    const raw=file?await file.text():$('#import-students-text').value;
+    const rows=parseImportStudents(raw);
+    if(!await sipConfirm('Import '+rows.length+' baris ke kelas '+className(S.classId)+' dan buat akun orang tua untuk NIS baru?',{title:'Konfirmasi impor siswa',confirmText:'Ya, impor siswa'}))return;
+    if(out)out.textContent='Menyimpan '+rows.length+' baris, mohon tunggu...';
+    const r=await call('importStudentsParents',{classId:S.classId,rows});
+    if(out)out.textContent='Berhasil: '+r.created+' siswa + akun orang tua. Dilewati: '+r.skipped+'. Password awal: '+r.password+'. '+(r.duplicates||[]).map(x=>x.nis+' ('+x.reason+')').join('; ');
+    S.needsHome=true;
+    await loadHome();
+    toast('Impor berhasil: '+r.created+' akun dibuat.');
+  }catch(e){if(out)out.textContent='Impor gagal: '+e.message;toast(e.message,true);}
+}
+function downloadImportTemplate(){
+  const text='NIS,Nama Siswa\n10201,Ahmad Fauzan\n10202,Aisyah Zahra\n';
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+text],{type:'text/csv;charset=utf-8'}));a.download='template_import_sipandai.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+function renderStudents(){if(!role('ADMIN','GURU_KELAS'))return;const x=S.home;let html=head('Data siswa','Kelola identitas siswa pada kelas aktif.');
+  html+=`<div class="grid grid2"><div class="card"><div class="panel-title" id="student-title">Tambah siswa</div><form id="student-form"><input type="hidden" name="id" value=""><div class="field"><label class="label">NIS</label><input name="nis" required placeholder="Nomor induk siswa" maxlength="35"></div><div class="field"><label class="label">Nama lengkap</label><input name="name" required placeholder="Nama siswa"></div><div class="actions"><button class="btn btn-primary" type="submit">Simpan siswa</button><button type="button" class="btn" data-action="student-new">Batal edit / siswa baru</button></div><p class="hint">Mengubah NIS yang digunakan sebagai username orang tua juga memperbarui username tersebut.</p></form></div><div class="card"><div class="panel-title">Buat akun orang tua</div><form id="parent-form"><div class="field"><label class="label">Siswa</label><select name="studentId" required>${fillOptions(x.students)}</select></div><div class="field"><label class="label">Nama orang tua / wali</label><input name="fullName" required></div><div class="form-grid"><div class="field"><label class="label">Hubungan</label><select name="relation"><option>Ayah</option><option>Ibu</option><option>Wali</option></select></div><div class="field"><label class="label">No. kontak (opsional)</label><input name="phone"></div></div><div class="field"><label class="label">Username (kosongkan untuk NIS)</label><input name="username" placeholder="Otomatis NIS siswa"></div><button class="btn btn-primary" type="submit">Buat akun keluarga</button></form></div></div><div id="credential-box"></div>`;
+  html+=`<div class="card section-gap"><div class="panel-title">Import Siswa + Akun Orang Tua (Sekaligus)</div><p class="hint">Format dua kolom: <b>NIS,Nama Siswa</b>. Siswa baru otomatis memperoleh akun orang tua: username = NIS, password awal = <b>sipandai123</b>. Data NIS yang sudah ada dilewati. Maksimal 100 siswa per impor.</p><div class="field"><label class="label">Unggah CSV (opsional)</label><input type="file" id="import-csv-file" accept=".csv,text/csv,text/plain"></div><div class="field"><label class="label">Atau tempel dari Excel / Google Sheets (2 kolom)</label><textarea id="import-students-text" rows="6" placeholder="NIS,Nama Siswa&#10;10201,Ahmad Fauzan&#10;10202,Aisyah Zahra"></textarea></div><div class="actions"><button class="btn" type="button" data-action="import-template">Unduh contoh CSV</button><button class="btn btn-primary" type="button" data-action="import-students">Import dan Buat Akun</button></div><div id="import-result" class="hint" aria-live="polite"></div><p class="hint">Nama akun wali untuk impor sementara berupa 'Orang tua/wali + nama siswa' dan bisa dilengkapi nanti. Akun saudara kandung tidak digabung otomatis; lakukan verifikasi hubungan keluarga melalui menu Keluarga.</p></div>`;
+  html+=`<div class="card section-gap"><div class="panel-title">Siswa kelas ${E(className(x.classId))} <span class="pill">${x.students.length} siswa</span></div>${x.students.length?`<div class="table-wrap"><table><thead><tr><th>NIS</th><th>Nama siswa</th><th>Tindakan</th></tr></thead><tbody>${x.students.map(s=>`<tr><td>${E(s.nis)}</td><td><b>${E(s.name)}</b></td><td><button type="button" class="btn btn-sm" data-action="edit-student" data-id="${E(s.id)}">Edit siswa</button></td></tr>`).join('')}</tbody></table></div>`:empty('Belum ada siswa. Tambahkan siswa pertama.')}</div>`;
+  setContent(html);
+}
+function editStudentForm(id){
+  const student=(S.home?.students||[]).find(x=>x.id===id),f=$('#student-form');if(!student||!f)return;
+  f.elements.namedItem('id').value=student.id;
+  f.elements.namedItem('nis').value=student.nis;
+  f.elements.namedItem('name').value=student.name;
+  const title=$('#student-title');if(title)title.textContent='Edit siswa: '+student.name;
+  f.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function resetStudentForm(){const f=$('#student-form');if(!f)return;f.reset();f.elements.namedItem('id').value='';const title=$('#student-title');if(title)title.textContent='Tambah siswa';}
+async function renderTeachers(){
+  if(!role('ADMIN','GURU_KELAS'))return;
+  const staff=(S.home.staff||[]).filter(x=>x.active==='YES');
+  const c=S.home.classes.find(x=>x.id===S.classId);
+  const owner=(staff.find(t=>t.id===c?.teacherId)||{});
+  let html=head('Pembagian pengampu kelas','Guru Kelas menentukan mapel miliknya dan mapel Guru Mapel. Akun Guru Mapel dibuat Admin sekali saja.');
+  if(!c){setContent(html+empty('Silakan pilih kelas yang akan diatur.'));return;}
+  html+=`<div class="notice">Kelas <b>${E(c.name)}</b> — Guru Kelas: <b>${E(owner.name||'Belum ada')}</b>. Untuk tiap mapel pilih pengampu lalu klik <b>Simpan</b>. Satu mapel memiliki satu pengampu aktif; guru mapel dapat mengajar banyak kelas.</div>`;
+  const assigned=(S.home.classSubjects||[]);
+  const teachers=staff.filter(t=>t.role==='GURU_MAPEL');
+  html+=`<div class="card section-gap"><div class="panel-title">Pemetaan mata pelajaran <span class="pill">${assigned.length} mapel</span></div><div class="stack">`+assigned.map(sub=>{
+    const isOwner=sub.teacherId===c.teacherId;
+    return `<form class="item" id="owner-${E(sub.id)}" data-subject-owner="${E(sub.id)}"><div class="form-grid"><div class="field"><b>${E(sub.name)}</b><div class="small muted">${isOwner?'Diampu Guru Kelas':'Diampu Guru Mapel'}</div></div><div class="field"><label class="label">Pengampu</label><select name="teacherId"><option value="" ${isOwner?'selected':''}>Guru Kelas — ${E(owner.name||'Pemilik kelas')}</option>${teachers.map(t=>`<option value="${E(t.id)}" ${sub.teacherId===t.id?'selected':''}>${E(t.name)}</option>`).join('')}</select></div></div><button class="btn btn-sm btn-primary" type="submit">Simpan pengampu</button><span class="save-status" aria-live="polite"></span></form>`;
+  }).join('')+`</div></div>`;
+  if(!teachers.length)html+=`<div class="notice warning section-gap">Belum ada akun Guru Mapel aktif. Admin perlu membuatnya melalui menu Akun Guru. Guru Kelas tetap bisa mengampu seluruh mapel sampai ditugaskan.</div>`;
+  setContent(html);
+}
+async function renderParents(){if(role('ORANG_TUA')){setContent(head('Akun keluarga','Kelola penghubungan beberapa anak dalam satu akun.')+`<div class="card"><div class="panel-title">Putra-putri terhubung</div>${S.home.children.length?childCards():empty('Belum ada anak terhubung.')}</div><div class="card section-gap"><div class="panel-title">Ajukan penambahan anak</div><p class="small muted">Masukkan NIS anak lain. Guru kelas akan memverifikasi hubungan keluarga sebelum informasi anak dapat dibuka.</p><form id="request-link-form" class="section-gap"><div class="field"><label class="label">NIS anak</label><input name="nis" required placeholder="NIS anak lainnya"></div><button class="btn btn-primary" type="submit">Kirim pengajuan</button></form></div>`);return;}
+  if(!role('ADMIN','GURU_KELAS'))return;const parentKey=menuCacheKey('parents',{classId:S.classId});if(!(S.menuCache.get(parentKey)?.until>Date.now()))setContent(head('Akun keluarga','Akun orang tua, reset password, dan relasi antar-anak.')+loader());try{const all=await cachedCall('parents',{classId:S.classId},45000);if(S.view!=='parents')return;S.additional.parents=all;const distinct=[...new Map(all.map(x=>[x.userId,x])).values()];const x=S.home;
+  let html=head('Akun keluarga','Orang tua dapat menggunakan satu akun untuk beberapa siswa.')+`<div class="grid grid2"><div class="card"><div class="panel-title">Hubungkan akun yang sudah ada</div><form id="link-parent-form"><div class="field"><label class="label">Akun orang tua dalam kelas ini</label><select name="parentUserId" required>${fillOptions(distinct.map(p=>({id:p.userId,name:p.parentName+' ('+p.username+')'})))}</select></div><div class="field"><label class="label">Siswa tambahan</label><select name="studentId" required>${fillOptions(x.students)}</select></div><div class="field"><label class="label">Hubungan</label><select name="relation"><option>Ayah</option><option>Ibu</option><option>Wali</option></select></div><button type="submit" class="btn btn-primary">Hubungkan anak</button><p class="hint">Untuk anak dari kelas berbeda, gunakan pengajuan melalui akun orang tua dan persetujuan Guru Kelas terkait.</p></form></div><div class="card"><div class="panel-title">Daftar orang tua</div><div class="stack">${all.map(p=>`<div class="item"><div class="item-head"><b>${E(p.parentName)}</b><span class="pill">${E(p.username)}</span></div><p class="small muted">Orang tua dari ${E(p.studentName)}</p><div class="actions"><button class="btn btn-sm btn-outline" data-action="reset-user" data-id="${E(p.userId)}">Reset password</button></div></div>`).join('')||empty('Belum ada orang tua terdaftar untuk kelas ini.')}</div></div></div><div id="credential-box"></div>`;setContent(html);
+}catch(e){toast(e.message,true);}}
+async function renderRequests(){if(!role('ADMIN','GURU_KELAS'))return;if(!(S.menuCache.get(menuCacheKey('requests',{}))?.until>Date.now()))setContent(head('Verifikasi hubungan keluarga','Setujui hanya setelah memeriksa identitas dan hubungan orang tua.')+loader());try{const r=await cachedCall('requests',{},40000);if(S.view!=='requests')return;setContent(head('Verifikasi hubungan keluarga','Verifikasi dapat melibatkan guru kelas tujuan.')+`<div class="card"><div class="panel-title">Menunggu verifikasi <span class="pill yellow">${r.length}</span></div><div class="stack">${r.map(x=>`<div class="item"><b>${E(x.parentName)}</b> ingin menghubungkan anak <b>${E(x.studentName)}</b><div class="small muted">NIS: ${E(x.nis)} · ${E(x.createdAt.slice(0,10))}</div><div class="actions"><button class="btn btn-sm btn-primary" data-action="review-link" data-id="${E(x.id)}" data-status="APPROVED">Setujui</button><button class="btn btn-sm btn-danger" data-action="review-link" data-id="${E(x.id)}" data-status="REJECTED">Tolak</button></div></div>`).join('')||empty('Tidak ada permintaan yang menunggu.')}</div></div>`);}catch(e){toast(e.message,true);}}
+async function renderUsers(){if(!role('ADMIN'))return;try{const users=(S.home.staff||[]);S.additional.users=users;const html=head('Pengguna sekolah','Buat akun guru terlebih dahulu sebelum membuat kelas.')+`<div class="grid grid2"><div class="card"><div class="panel-title">Buat akun sekolah</div><form id="user-form"><div class="field"><label class="label">Nama pengguna</label><input name="fullName" required></div><div class="field"><label class="label">Username</label><input name="username" required placeholder="Contoh: guru.nur" pattern="[a-zA-Z0-9._-]{3,90}"></div><div class="field"><label class="label">Role</label><select name="role"><option value="GURU_KELAS">Guru Kelas</option><option value="GURU_MAPEL">Guru Mapel</option><option value="KEPALA_SEKOLAH">Kepala Sekolah</option></select></div><button class="btn btn-primary" type="submit">Buat akun</button></form></div><div class="card"><div class="panel-title">Daftar pengguna</div><div class="stack">${users.map(u=>`<div class="item"><div class="item-head"><b>${E(u.fullName)}</b><span class="pill">${E(u.role.replaceAll('_',' '))}</span></div><p class="small muted">${E(u.username)} · ${E(u.active==='YES'?'Aktif':'Nonaktif')}</p><div class="actions"><button class="btn btn-sm btn-outline" data-action="reset-user" data-id="${E(u.id)}">Reset password</button></div></div>`).join('')}</div></div></div><div id="credential-box"></div>`;setContent(html);}catch(e){toast(e.message,true);}}
+async function renderClasses(){if(!role('ADMIN'))return;try{const teachers=S.home.staff||[];const roomTeachers=teachers.filter(t=>t.role==='GURU_KELAS');let html=head('Kelas & mata pelajaran','Buat kelas setelah akun Guru Kelas tersedia.')+`<div class="grid grid2"><div class="card"><div class="panel-title">Buat kelas</div><form id="class-form"><div class="field"><label class="label">Nama kelas</label><input name="name" required placeholder="Contoh: 5A"></div><div class="field"><label class="label">Guru Kelas pemilik</label><select name="teacherId" required>${fillOptions(roomTeachers)}</select></div><button class="btn btn-primary" type="submit">Tambah kelas</button></form></div><div class="card"><div class="panel-title">Tambah mata pelajaran</div><form id="subject-form"><div class="field"><label class="label">Nama mata pelajaran</label><input name="name" required placeholder="Contoh: Bahasa Sunda"></div><button class="btn btn-primary" type="submit">Simpan mapel</button></form></div></div><div class="card section-gap"><div class="panel-title">Kelas yang tersedia</div><div class="stack">${S.home.classes.map(x=>`<div class="item row-between"><b>${E(x.name)}</b><span class="pill green">Aktif</span></div>`).join('')||empty('Belum ada kelas.')}</div></div>`;setContent(html);}catch(e){toast(e.message,true);}}
+function renderSettings(){setContent(head('Pengaturan akun','Ganti password secara berkala untuk melindungi informasi siswa.')+`<div class="card" style="max-width:550px"><div class="panel-title">Keamanan akun</div><div class="notice">Username: <b>${E(S.user.username)}</b>. Sesi akan berakhir setelah password berhasil diganti.</div><div class="section-gap">${changePasswordForm()}</div></div>`);}
+async function readFile(file){if(!file)return null;if(file.size>3*1024*1024)throw new Error('File melebihi 3 MB.');const allowed=['image/jpeg','image/png','application/pdf'];if(!allowed.includes(file.type))throw new Error('File harus JPG, PNG, atau PDF.');const data=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(file);});return{name:file.name,mime:file.type,data};}
+async function openBehaviorFile(id){try{toast('Menyiapkan dokumen...');const d=await call('getBehaviorFile',{behaviorId:id});const binary=atob(d.base64),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);const obj=URL.createObjectURL(new Blob([bytes],{type:d.mime}));const a=document.createElement('a');a.href=obj;a.download=d.name||'dokumen';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(obj),20000);}catch(e){toast(e.message,true);}}
+// Semua tombol dan formulir menggunakan delegasi event supaya render ulang tetap konsisten.
+/* ====================== UI SIPANDAI TAHAP 2 ====================== */
+S.v2={journal:[],assessments:[],tasks:[],assessmentId:'',taskId:'',taskStudentId:'',fetchNo:0,detailRequest:0,journalKey:null,assessmentKey:null,taskKey:null};
+S.progress={studentId:'',lastKey:'',report:null,requestId:0};
+const isStaff=()=>role('ADMIN','KEPALA_SEKOLAH','GURU_KELAS','GURU_MAPEL');
+const canRecord=()=>role('ADMIN','GURU_KELAS','GURU_MAPEL');
+const canEditMapelUI=(id)=>role('ADMIN')||(S.home?.subjects||[]).some(s=>s.id===id);
+const getSubjectName=(id)=>(S.home?.classSubjects||S.home?.subjects||[]).find(x=>x.id===id)?.name||'Mata pelajaran';
+const subjectOptions=()=>fillOptions(S.home?.subjects||[],'','Pilih mata pelajaran');
+const ownSubjectsHint=()=>!S.home?.subjects?.length?'<div class="notice warning section-gap">Belum ada mata pelajaran yang boleh Anda kelola. Minta Guru Kelas menetapkan pengampu melalui menu Guru Mapel.</div>':'';
+const niceDate=(s)=>String(s||'').slice(0,16).replace('T',' ');
+const statusText=(s)=>({DRAFT:'Draft',PUBLISHED:'Dipublikasikan',CLOSED:'Ditutup',RENCANA:'Rencana',TERLAKSANA:'Terlaksana',BELUM:'Belum dikumpulkan',SUBMITTED:'Sudah dikumpulkan',NEEDS_REVISION:'Perlu perbaikan',DONE:'Selesai'}[s]||s||'–');
+const statusPill=(s)=>`<span class="pill ${['PUBLISHED','TERLAKSANA','DONE'].includes(s)?'green':['NEEDS_REVISION','DRAFT'].includes(s)?'yellow':''}">${E(statusText(s))}</span>`;
+function sectionLoading(title,text){setContent(head(title,text)+loader());}
+async function v2save(action,data,{refresh=true}={}){
+  if(S.busy)return null;
+  const submit=document.activeElement,form=submit?.closest?.('form'),label=document.activeElement?.textContent;
+  try{
+    if(['saveJournal','saveAssessment','saveTask'].includes(action)&&!data.mapelId)throw new Error('Pilih mata pelajaran yang diampu akun Anda. Bila belum ada, atur pengampu melalui Guru Mapel.');
+    busy(true);
+    if(submit&&submit.tagName==='BUTTON'){submit.dataset.originalLabel=submit.textContent;submit.textContent='Menyimpan…';}
+    const result=await call(action,data);
+    if(result&&result.ok===false)throw new Error((result.error||'Penyimpanan gagal di server.')+(result.ref?' [Referensi '+result.ref+']':''));
+    form?.querySelector('.save-failure')?.remove();
+    forgetMenuCache('journalList','assessmentList','taskList','assessmentDetail','taskDetail','progressReport');
+    if(result.item){
+      const map={saveJournal:['journal','journalKey',paintJournal],saveAssessment:['assessments','assessmentKey',paintAssessments],saveTask:['tasks','taskKey',paintTasks]};
+      const spec=map[action];
+      if(spec){const arr=S.v2[spec[0]],pos=arr.findIndex(x=>x.id===result.item.id);
+        if(pos>=0)arr[pos]=result.item;else arr.unshift(result.item);
+        if(S.view===({saveJournal:'journal',saveAssessment:'assessments',saveTask:'tasks'}[action]))spec[2]();
+      }
+    }
+    if(action==='publishAssessment'){
+      const x=S.v2.assessments.find(a=>a.id===data.id);if(x)x.status=result.status;
+      if(S.view==='assessments')paintAssessments();
+    }
+    if(action==='taskStatus'){
+      const x=S.v2.tasks.find(t=>t.id===data.id);if(x)x.status=result.status;
+      if(S.view==='tasks')paintTasks();
+    }
+    if(refresh&&['saveJournal','saveAssessment','saveTask'].includes(action)){
+      const form=document.getElementById(({saveJournal:'journal-form',saveAssessment:'assessment-form',saveTask:'task-form'})[action]);
+      if(form){form.reset();if(form.elements.namedItem('id'))form.elements.namedItem('id').value='';
+        const subject=form.elements.namedItem('mapelId');if(subject)subject.disabled=false;}
+    }
+    toast('Berhasil disimpan.');
+    return result;
+  }catch(err){console.error('SIPANDAI gagal menyimpan '+action,err);toast(err.message||'Gagal menyimpan.',true);if(form){let note=form.querySelector('.save-failure');if(!note){note=document.createElement('p');note.className='notice warning save-failure section-gap';note.setAttribute('role','alert');form.appendChild(note);}note.textContent='Belum tersimpan: '+(err.message||'Kesalahan tidak diketahui');}return null;
+  }finally{busy(false);if(submit?.dataset?.originalLabel){submit.textContent=submit.dataset.originalLabel;delete submit.dataset.originalLabel;}}
+}
+function v2FormClass(){if(!S.classId) return '<div class="notice">Pilih atau buat kelas terlebih dahulu.</div>';return '';}
+
+/* ----------------------------- JURNAL -------------------------------- */
+function renderJournal(){
+  if(!isStaff())return;
+  const cl=S.classId,scope=cl;
+  let html=head('Teacher Planner & Jurnal','Rencana, pelaksanaan, dan refleksi dalam satu tempat. Formulir tetap terbuka selama data dimuat.');
+  if(canRecord()&&cl)html+=`<div class="card"><div class="panel-title">Buat atau perbarui jurnal</div><form id="journal-form"><input type="hidden" name="id" value=""><div class="form-grid"><div class="field"><label class="label">Tanggal</label><input name="date" type="date" required value="${E(S.home.serverDate)}"></div><div class="field"><label class="label">Mata pelajaran</label><select name="mapelId" required>${subjectOptions()}</select></div><div class="field wide"><label class="label">Rencana / tujuan pembelajaran</label><textarea name="plan" required maxlength="1800" placeholder="Apa yang akan dipelajari hari ini?"></textarea></div><div class="field wide"><label class="label">Kegiatan yang terlaksana</label><textarea name="activity" maxlength="2500" placeholder="Kegiatan, metode, dan hal penting selama pelajaran..."></textarea></div><div class="field wide"><label class="label">Refleksi / tindak lanjut</label><textarea name="reflection" maxlength="1800" placeholder="Apa yang berjalan baik dan perlu diperbaiki?"></textarea></div><div class="field"><label class="label">Status jurnal</label><select name="status"><option value="RENCANA">Masih rencana</option><option value="TERLAKSANA">Sudah terlaksana</option></select></div></div>${ownSubjectsHint()}<div class="actions"><button type="submit" class="btn btn-primary" ${!S.home.subjects.length?'disabled':''}>Simpan jurnal</button><button type="button" class="btn" data-action="clear-journal">Jurnal baru</button></div></form></div>`;
+  if(!cl&&role('GURU_MAPEL'))html+='<div class="notice warning">Belum ada kelas yang ditugaskan. Hubungi Guru Kelas untuk pemetaan mapel.</div>';
+  html+='<div id="journal-list" class="section-gap"><div class="notice">Menyiapkan riwayat jurnal…</div></div>';
+  setContent(html);
+  if(S.v2.journalKey===scope)paintJournal();
+  if(cl){const no=++S.v2.fetchNo;
+    cachedCall('journalList',{classId:cl},40000).then(list=>{
+      if(S.view!=='journal'||cl!==S.classId||no!==S.v2.fetchNo)return;
+      S.v2.journalKey=scope;S.v2.journal=list;paintJournal();
+    }).catch(err=>{const el=$('#journal-list');if(el)el.innerHTML='<div class="notice">'+E(err.message)+'</div>';});
+  }else{S.v2.journal=[];paintJournal();}
+}
+function paintJournal(){
+  const el=$('#journal-list');if(!el)return;
+  const list=S.v2.journal;
+  el.innerHTML=`<div class="card section-gap"><div class="panel-title">Riwayat jurnal <span class="pill">${list.length}</span></div><div class="stack">${list.map(j=>`<div class="item"><div class="row-between"><b>${E(j.date)} · ${E(getSubjectName(j.mapelId))}</b>${statusPill(j.status)}</div><p class="section-gap">${E(j.plan)}</p>${j.activity?`<p class="small muted">Pelaksanaan: ${E(j.activity.slice(0,400))}</p>`:''}${j.reflection?`<p class="small muted">Refleksi: ${E(j.reflection.slice(0,250))}</p>`:''}${canRecord()&&canEditMapelUI(j.mapelId)&&(S.user.id===j.teacherId||role('ADMIN','GURU_KELAS'))?`<div class="actions"><button class="btn btn-sm" data-action="edit-journal" data-id="${E(j.id)}">Ubah jurnal</button><button class="btn btn-sm" data-action="archive-journal" data-id="${E(j.id)}">Hapus jurnal</button></div>`:''}</div>`).join('')||empty('Belum ada jurnal pada kelas ini.')}</div></div>`;
+}
+function editJournal(id){const j=S.v2.journal.find(x=>x.id===id),f=$('#journal-form');if(!j||!f)return;
+  ['id','date','mapelId','plan','activity','reflection','status'].forEach(k=>{if(f.elements[k])f.elements[k].value=j[k]||'';});
+  f.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+/* ----------------------------- ASESMEN ------------------------------- */
+function assessmentForm(){return `<div class="card"><div class="panel-title">Buat asesmen / atur informasi</div><form id="assessment-form"><input type="hidden" name="id"><div class="form-grid"><div class="field"><label class="label">Mata pelajaran</label><select name="mapelId" required>${subjectOptions()}</select></div><div class="field"><label class="label">Tanggal</label><input type="date" name="date" value="${E(S.home.serverDate)}" required></div><div class="field"><label class="label">Jenis asesmen</label><select name="type" id="assess-type"><option value="Asesmen Harian">Asesmen Harian</option><option value="Asesmen Tengah Semester">Asesmen Tengah Semester</option><option value="Asesmen Akhir Semester">Asesmen Akhir Semester</option><option value="Asesmen Akhir Tahun">Asesmen Akhir Tahun</option><option value="LAINNYA">Nama kategori lainnya...</option></select></div><div class="field"><label class="label">Kategori tambahan (bila memilih lainnya)</label><input name="customType" maxlength="100" placeholder="Contoh: Praktik / Proyek"></div><div class="field wide"><label class="label">Nama kegiatan asesmen</label><input name="name" maxlength="140" required placeholder="Contoh: Asesmen Harian 1 — Pecahan"></div><div class="field wide"><label class="label">Tujuan pembelajaran (opsional)</label><textarea name="objective" maxlength="1600" placeholder="Tujuan yang dinilai pada asesmen ini..."></textarea></div></div>${ownSubjectsHint()}<div class="actions"><button class="btn btn-primary" type="submit" ${!S.home.subjects.length?'disabled':''}>Simpan sebagai draft</button><button type="button" class="btn" data-action="clear-assessment">Asesmen baru</button></div></form></div>`;}
+function renderAssessments(){
+  const cl=S.classId,child=S.childId,scope=cl+'|'+child;
+  let html=head('Asesmen & Nilai',role('ORANG_TUA')?'Nilai asesmen yang sudah dipublikasikan guru.':'Input nilai massal dan kendalikan publikasi kepada orang tua.');
+  if(canRecord()&&cl)html+=assessmentForm();
+  if(!cl&&role('GURU_MAPEL'))html+='<div class="notice warning">Akun Guru Mapel belum mendapatkan penugasan kelas. Silakan minta Guru Kelas menentukan pengampu.</div>';
+  html+='<div id="assessment-list" class="section-gap"><div class="notice">Menyiapkan daftar asesmen…</div></div><div id="assessment-detail" class="section-gap"></div>';
+  setContent(html);
+  if(S.v2.assessmentKey===scope)paintAssessments();
+  if(cl){const no=++S.v2.fetchNo;
+    cachedCall('assessmentList',{classId:cl,studentId:role('ORANG_TUA')?child:''},40000).then(list=>{
+      if(S.view!=='assessments'||S.classId!==cl||S.childId!==child||no!==S.v2.fetchNo)return;
+      S.v2.assessmentKey=scope;S.v2.assessments=list;paintAssessments();
+    }).catch(err=>{const el=$('#assessment-list');if(el)el.innerHTML='<div class="notice">'+E(err.message)+'</div>';});
+  }else{S.v2.assessments=[];paintAssessments();}
+}
+function paintAssessments(){
+  const el=$('#assessment-list');if(!el)return;
+  const list=S.v2.assessments;
+  el.innerHTML=`<div class="card section-gap"><div class="panel-title">Daftar asesmen <span class="pill">${list.length}</span></div><div class="stack">${list.map(a=>`<div class="item"><div class="row-between"><div><b>${E(a.name)}</b><div class="small muted">${E(getSubjectName(a.mapelId))} · ${E(a.date)} · ${E(a.type)}</div></div>${statusPill(a.status)}</div><div class="actions"><button class="btn btn-sm btn-outline" data-action="assessment-detail" data-id="${E(a.id)}">${role('ORANG_TUA')?'Lihat nilai':'Nilai siswa'}</button>${canRecord()&&canEditMapelUI(a.mapelId)&&a.status==='DRAFT'?`<button class="btn btn-sm" data-action="edit-assessment" data-id="${E(a.id)}">Ubah info</button><button class="btn btn-sm btn-primary" data-action="publish-assessment" data-id="${E(a.id)}" data-publish="true">Publikasikan</button>`:''}${canRecord()&&canEditMapelUI(a.mapelId)&&a.status==='PUBLISHED'?`<button class="btn btn-sm" data-action="publish-assessment" data-id="${E(a.id)}" data-publish="false">Tarik publikasi</button>`:''}${canRecord()&&canEditMapelUI(a.mapelId)?`<button class="btn btn-sm" data-action="archive-assessment" data-id="${E(a.id)}">Hapus asesmen & nilai</button>`:''}</div></div>`).join('')||empty('Belum ada asesmen tersedia.')}</div></div>`;
+}
+async function loadAssessmentDetail(id){S.v2.assessmentId=id;const queryNo=++S.v2.detailRequest;const host=$('#assessment-detail');if(!host)return;host.innerHTML=loader();
+  try{const d=await cachedCall('assessmentDetail',{id,studentId:role('ORANG_TUA')?S.childId:''},13000);
+    const h=$('#assessment-detail');if(!h||S.v2.assessmentId!==id||queryNo!==S.v2.detailRequest||S.view!=='assessments')return;
+    if(role('ORANG_TUA')){h.innerHTML=`<div class="card"><div class="panel-title">${E(d.assessment.name)}</div><div class="grid grid2"><div class="notice">Nilai terpublikasi: <b style="font-size:24px">${E(d.score===''?'Belum dinilai':d.score)}</b></div><div class="notice">${E(d.feedback||'Belum ada catatan dari guru.')}</div></div></div>`;return;}
+    const editable=d.editable;
+    h.innerHTML=`<div class="card"><div class="panel-title">Nilai: ${E(d.assessment.name)} ${statusPill(d.assessment.status)}</div>${d.objective?`<p class="small muted">Tujuan: ${E(d.objective)}</p>`:''}<p class="hint">Rentang nilai 0–100. Biarkan kosong jika belum dinilai. Simpan secara massal, lalu publikasikan saat sudah diperiksa.</p><form id="score-form" data-id="${E(id)}"><div class="table-wrap section-gap"><table><thead><tr><th>Siswa</th><th>Nilai</th><th>Catatan</th></tr></thead><tbody>${d.rows.map(s=>`<tr data-student-id="${E(s.id)}"><td><b>${E(s.name)}</b><div class="small muted">${E(s.nis)}</div></td><td><input type="number" class="score-input" min="0" max="100" step="0.01" value="${E(s.score)}" ${editable?'':'disabled'}></td><td><input class="score-note" maxlength="600" value="${E(s.feedback)}" ${editable?'':'disabled'}></td></tr>`).join('')}</tbody></table></div>${editable?'<div class="actions"><button type="submit" class="btn btn-primary">Simpan semua nilai</button></div>':'<div class="notice section-gap">Nilai tidak dapat diubah pada status ini. Jika sudah terbit, tarik publikasi sebelum mengoreksi.</div>'}</form></div>`;
+  }catch(e){toast(e.message,true);const h=$('#assessment-detail');if(h)h.innerHTML=empty('Gagal membuka nilai.');}
+}
+async function editAssessment(id){const a=S.v2.assessments.find(x=>x.id===id),f=$('#assessment-form');if(!a||!f)return;
+  try{const d=await call('assessmentDetail',{id});f.elements.id.value=id;f.elements.mapelId.value=a.mapelId;f.elements.mapelId.disabled=true;
+    f.elements.name.value=a.name;f.elements.date.value=a.date;f.elements.objective.value=d.objective||'';
+    const types=['Asesmen Harian','Asesmen Tengah Semester','Asesmen Akhir Semester','Asesmen Akhir Tahun'];
+    f.elements.type.value=types.includes(a.type)?a.type:'LAINNYA';f.elements.customType.value=types.includes(a.type)?'':a.type;
+    f.scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){toast(e.message,true);}
+}
+
+/* ------------------------- TUGAS / KUIS ------------------------------ */
+function taskForm(){return `<div class="card"><div class="panel-title">Buat penugasan</div><form id="task-form"><input type="hidden" name="id"><div class="form-grid"><div class="field"><label class="label">Mata pelajaran</label><select name="mapelId" required>${subjectOptions()}</select></div><div class="field"><label class="label">Batas pengumpulan</label><input name="dueAt" type="datetime-local" required></div><div class="field wide"><label class="label">Judul tugas / kuis</label><input name="title" required maxlength="160" placeholder="Contoh: Latihan pecahan halaman 34"></div><div class="field wide"><label class="label">Instruksi</label><textarea name="instructions" required maxlength="3500" placeholder="Langkah pengerjaan di rumah, alat, dan penjelasan singkat..."></textarea></div><div class="field wide"><label class="label">Tautan Google Forms (opsional)</label><input type="url" name="formUrl" maxlength="600" placeholder="https://forms.gle/..."></div></div>${ownSubjectsHint()}<div class="actions"><button type="submit" class="btn btn-primary" ${!S.home.subjects.length?'disabled':''}>Simpan draft tugas</button><button type="button" class="btn" data-action="clear-task">Tugas baru</button></div><p class="hint">Google Forms ditautkan sebagai kuis eksternal. Nilai Forms belum disinkronkan otomatis ke SIPANDAI.</p></form></div>`;}
+function renderTasks(){
+  const cl=S.classId,child=S.childId,scope=cl+'|'+child;
+  let html=head('Penugasan & Kuis',role('ORANG_TUA')?'Kirim tugas, unggah foto, dan tanggapi guru.':'Beri tugas dan pantau pengumpulan siswa.');
+  if(canRecord()&&cl)html+=taskForm();
+  if(!cl&&role('GURU_MAPEL'))html+='<div class="notice warning">Belum ada kelas yang ditugaskan kepada akun ini.</div>';
+  html+='<div id="task-list" class="section-gap"><div class="notice">Menyiapkan daftar tugas…</div></div><div id="task-detail-host" class="section-gap"></div>';
+  setContent(html);
+  if(S.v2.taskKey===scope)paintTasks();
+  if(cl){const no=++S.v2.fetchNo;
+    cachedCall('taskList',{classId:cl,studentId:role('ORANG_TUA')?child:''},40000).then(list=>{
+      if(S.view!=='tasks'||S.classId!==cl||S.childId!==child||no!==S.v2.fetchNo)return;
+      S.v2.taskKey=scope;S.v2.tasks=list;paintTasks();
+    }).catch(err=>{const el=$('#task-list');if(el)el.innerHTML='<div class="notice">'+E(err.message)+'</div>';});
+  }else{S.v2.tasks=[];paintTasks();}
+}
+function paintTasks(){
+  const el=$('#task-list');if(!el)return;
+  const list=S.v2.tasks;
+  el.innerHTML=`<div class="card section-gap"><div class="panel-title">Daftar tugas <span class="pill">${list.length}</span></div><div class="stack">${list.map(t=>`<div class="item"><div class="row-between"><div><b>${E(t.title)}</b><div class="small muted">${E(getSubjectName(t.mapelId))} · Tenggat ${E(niceDate(t.dueAt))}</div></div>${statusPill(role('ORANG_TUA')?t.submissionStatus:t.status)}</div><p class="small section-gap">${E(t.instructions.slice(0,240))}</p>${t.formUrl?`<p class="small">📝 <a href="${E(t.formUrl)}" target="_blank" rel="noopener noreferrer">Buka Google Forms</a></p>`:''}<div class="actions"><button type="button" class="btn btn-sm btn-outline" data-action="task-detail" data-id="${E(t.id)}">Detail & pengumpulan</button>${canRecord()&&canEditMapelUI(t.mapelId)&&t.status==='DRAFT'?`<button type="button" class="btn btn-sm" data-action="edit-task" data-id="${E(t.id)}">Ubah</button><button type="button" class="btn btn-sm btn-primary" data-action="task-status" data-id="${E(t.id)}" data-status="PUBLISHED">Terbitkan</button>`:''}${canRecord()&&canEditMapelUI(t.mapelId)&&t.status==='PUBLISHED'?`<button type="button" class="btn btn-sm" data-action="task-status" data-id="${E(t.id)}" data-status="CLOSED">Tutup pengumpulan</button>`:''}${canRecord()&&canEditMapelUI(t.mapelId)?`<button type="button" class="btn btn-sm" data-action="archive-task" data-id="${E(t.id)}">Hapus penugasan</button>`:''}</div></div>`).join('')||empty('Belum ada tugas pada kelas ini.')}</div></div>`;
+}
+async function loadTaskDetail(taskId,studentId=''){
+  S.v2.taskId=taskId;S.v2.taskStudentId=studentId;const queryNo=++S.v2.detailRequest;
+  const h=$('#task-detail-host');if(!h)return;h.innerHTML=loader();
+  try{const d=await cachedCall('taskDetail',{taskId,studentId:role('ORANG_TUA')?S.childId:studentId},12000);
+    const host=$('#task-detail-host');if(!host||S.v2.taskId!==taskId||S.view!=='tasks'||queryNo!==S.v2.detailRequest)return;
+    S.v2.taskStudentId=d.studentId;
+    const t=d.task,parent=role('ORANG_TUA'),sub=d.submission;
+    let html=`<div class="card"><div class="panel-title">Detail tugas: ${E(t.title)} ${statusPill(t.status)}</div><p>${E(t.instructions)}</p><p class="hint">Tenggat: ${E(niceDate(t.dueAt))}</p>${t.formUrl?`<div class="notice section-gap">Kuis eksternal: <a href="${E(t.formUrl)}" rel="noopener noreferrer" target="_blank">Buka Google Forms</a>. Penyelesaian Google Forms belum tersinkron otomatis.</div>`:''}`;
+    if(!parent)html+=`<div class="field section-gap"><label class="label">Pilih siswa untuk memeriksa tugas</label><select id="task-pick-student">${d.students.map(s=>`<option value="${E(s.id)}" ${d.studentId===s.id?'selected':''}>${E(s.name)} — ${E(statusText(s.status))}</option>`).join('')}</select></div>`;
+    html+=`<div class="divider"></div><div class="row-between"><b>Status: ${E(statusText(sub?.status||'BELUM'))}</b><span class="small muted">${E(niceDate(sub?.submittedAt||''))}</span></div><p class="section-gap">${E(sub?.note||'Belum ada keterangan pengumpulan.')}</p>`;
+    if(d.files.length)html+=`<div class="stack section-gap">${d.files.map(f=>`<div class="row-between item"><span>📎 ${E(f.name)}</span><button type="button" class="btn btn-sm" data-action="task-file" data-id="${E(f.id)}">Buka lampiran</button></div>`).join('')}</div>`;
+    if(parent&&d.canSubmit)html+=`<form id="submission-form" data-id="${E(taskId)}" class="section-gap"><div class="field"><label class="label">Keterangan pengumpulan / jawaban</label><textarea name="note" maxlength="1400" placeholder="Misalnya: Sudah mengerjakan halaman 34, foto terlampir..."></textarea></div><div class="field"><label class="label">Foto atau PDF (maks. 3 file total, masing-masing 3 MB)</label><input name="files" type="file" multiple accept="image/jpeg,image/png,application/pdf"><p class="hint">Foto akan diperkecil otomatis sebelum dikirim untuk menghemat kuota. Kirim file satu per satu secara otomatis.</p></div><button type="submit" class="btn btn-primary">Kirim / perbarui pengumpulan</button></form>`;
+    if(parent&&!d.canSubmit)html+=`<div class="notice section-gap">${t.status==='CLOSED'?'Pengumpulan tugas sudah ditutup.':'Tugas telah dinyatakan selesai.'}</div>`;
+    if(!parent&&d.canReview&&sub)html+=`<form id="review-form" data-id="${E(taskId)}" data-student="${E(d.studentId)}" class="section-gap"><div class="panel-title">Tindak lanjut guru</div><div class="field"><label class="label">Status hasil kerja</label><select name="status"><option value="DONE">Selesai</option><option value="NEEDS_REVISION">Perlu perbaikan</option></select></div><div class="field"><label class="label">Umpan balik guru</label><textarea name="message" required maxlength="1400" placeholder="Berikan komentar yang membantu siswa berkembang..."></textarea></div><button type="submit" class="btn btn-primary">Simpan umpan balik</button></form>`;
+    html+=`<div class="divider"></div><div class="panel-title">Komunikasi terkait tugas</div><div class="stack">${d.messages.map(m=>`<div class="item"><div class="row-between"><b>${E(m.role==='ORANG_TUA'?'Orang Tua':'Guru')}</b><span class="small muted">${E(niceDate(m.createdAt))}</span></div><p>${E(m.message)}</p></div>`).join('')||empty('Belum ada tanggapan.')}</div>`;
+    if(sub&&(parent||d.canReview))html+=`<form id="task-comment-form" data-id="${E(taskId)}" data-student="${E(d.studentId)}" class="section-gap"><div class="field"><label class="label">Balas catatan tugas</label><textarea name="message" maxlength="1000" required placeholder="Tanggapan sesuai tugas ini..."></textarea></div><button type="submit" class="btn">Kirim tanggapan</button></form>`;
+    html+='</div>';host.innerHTML=html;
+  }catch(e){toast(e.message,true);const host=$('#task-detail-host');if(host)host.innerHTML=empty('Detail tugas gagal dimuat.');}
+}
+function editTask(id){const t=S.v2.tasks.find(x=>x.id===id),f=$('#task-form');if(!t||!f)return;
+  ['id','mapelId','title','instructions','dueAt','formUrl'].forEach(k=>{if(f.elements[k])f.elements[k].value=k==='dueAt'?String(t[k]).slice(0,16):(t[k]||'');});
+  f.elements.mapelId.disabled=true;f.scrollIntoView({behavior:'smooth',block:'start'});
+}
+async function compressTaskFile(file){
+  if(file.type==='application/pdf')return readFile(file);
+  if(!['image/jpeg','image/png'].includes(file.type))throw new Error('Lampiran harus berupa foto JPG/PNG atau PDF.');
+  const img=await new Promise((resolve,reject)=>{const im=new Image();const url=URL.createObjectURL(file);im.onload=()=>{URL.revokeObjectURL(url);resolve(im);};im.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Foto tidak dapat dibaca.'));};im.src=url;});
+  const ratio=Math.min(1,1400/Math.max(img.width,img.height));const cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(img.width*ratio));cv.height=Math.max(1,Math.round(img.height*ratio));
+  const ctx=cv.getContext('2d');ctx.fillStyle='#ffffff';ctx.fillRect(0,0,cv.width,cv.height);ctx.drawImage(img,0,0,cv.width,cv.height);
+  const data=cv.toDataURL('image/jpeg',0.78);assertImageSize(data);
+  return{name:file.name.replace(/\.(png|jpe?g)$/i,'')+'.jpg',mime:'image/jpeg',data};
+}
+function assertImageSize(data){if(data.length>3*1024*1024*1.38)throw new Error('Foto masih terlalu besar (batas 3 MB).');}
+async function openTaskFile(id){try{toast('Mengambil lampiran secara privat...');const d=await call('getTaskFile',{attachmentId:id});const raw=atob(d.base64),bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+  const url=URL.createObjectURL(new Blob([bytes],{type:d.mime})),a=document.createElement('a');a.href=url;a.download=d.name||'tugas';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),25000);
+  }catch(e){toast(e.message,true);}}
+
+/* ================= TAHAP 3: LAPORAN PERKEMBANGAN ================= */
+function progressStudentId(){
+  return role('ORANG_TUA')?S.childId:(S.progress.studentId&&S.home.students.some(s=>s.id===S.progress.studentId)?S.progress.studentId:S.home.students[0]?.id||'');
+}
+function renderProgress(){
+  const isParent=role('ORANG_TUA');const id=progressStudentId();S.progress.studentId=id;
+  let html=head('Laporan Perkembangan Belajar','Pantauan sementara untuk mendampingi anak, bukan pengganti rapor resmi.');
+  if(!isParent){
+    html+=`<div class="card"><div class="row-between"><div class="panel-title">Siswa yang dipantau</div><button type="button" class="btn btn-sm btn-outline" data-action="refresh-progress">Perbarui laporan</button></div><select id="progress-student">${(S.home.students||[]).map(x=>`<option value="${E(x.id)}" ${x.id===id?'selected':''}>${E(x.name)} — ${E(x.nis)}</option>`).join('')}</select></div>`;
+  }else html+=`<div class="notice">Laporan untuk <b>${E(S.home.currentChild?.name||'anak Anda')}</b>. Hanya informasi yang sudah diterbitkan guru yang ditampilkan. <button type="button" class="btn btn-sm" data-action="refresh-progress">Perbarui</button></div>`;
+  html+='<div id="progress-body" class="section-gap"><div class="card">Memuat ringkasan perkembangan…</div></div>';
+  setContent(html);
+  const key=S.classId+'|'+id;
+  if(key===S.progress.lastKey&&S.progress.report)paintProgress(S.progress.report);
+  if(id)loadProgress();else $('#progress-body').innerHTML=empty('Belum ada siswa aktif pada kelas ini.');
+}
+async function loadProgress(force=false){
+  const studentId=progressStudentId(),classId=S.classId;
+  if(!studentId||!classId)return;
+  const key=classId+'|'+studentId,req=++S.progress.requestId;
+  const h=$('#progress-body');
+  if(h&&!S.progress.report)h.innerHTML='<div class="card">Menyiapkan laporan…</div>';
+  if(force)forgetMenuCache('progressReport');
+  try{
+    const r=await cachedCall('progressReport',{studentId,classId},force?0:40000);
+    if(req!==S.progress.requestId||S.view!=='progress'||classId!==S.classId||studentId!==progressStudentId())return;
+    S.progress.report=r;S.progress.lastKey=key;paintProgress(r);
+  }catch(err){console.error('Gagal mengambil laporan',err);if(h)h.innerHTML='<div class="notice">Gagal memuat laporan: '+E(err.message)+'</div>';}
+}
+function paintProgress(r){
+  const host=$('#progress-body');if(!host)return;
+  const t=r.tasks,a=r.attendance,b=r.behavior;
+  let html=`<div class="card"><div class="row-between"><div><h2>${E(r.student.name)}</h2><div class="small muted">NIS ${E(r.student.nis)} · ${E(r.className)}</div></div><div class="small muted">Pembaruan ${E(niceDate(r.generatedAt))}</div></div><p class="hint">${E(r.disclaimer)}</p></div>`;
+  html+=`<div class="grid grid4 section-gap">
+    ${stat('Kehadiran tercatat',a.total?a.percentage+'%':'–',a.total?'Hadir '+a.present+' dari '+a.total+' hari':'Belum ada data harian')}
+    ${stat('Asesmen dinilai',r.marksCount,'Nilai yang sudah dipublikasikan')}
+    ${stat('Tugas selesai',t.done,'Dari '+t.total+' tugas yang telah diterbitkan')}
+    ${stat('Catatan apresiasi',b.positive,'Pembinaan: '+b.guidance)}
+  </div>`;
+  html+=`<div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Perkembangan nilai per mapel</div><p class="hint">Rata-rata sederhana dari asesmen yang sudah diterbitkan, bukan nilai akhir rapor.</p>
+    ${r.subjects.map(s=>`<div class="progress-subject"><div class="row-between"><b>${E(s.name)}</b><span class="progress-score">${E(s.average)}</span></div><div class="progress-meter"><span style="width:${Math.max(0,Math.min(100,s.average))}%"></span></div><div class="small muted">${s.count} asesmen · Nilai terbaru: ${E(s.latest)}</div><details class="section-gap"><summary class="small">Lihat rincian asesmen</summary><div class="stack section-gap">${s.marks.map(m=>`<div class="item"><div class="row-between"><b>${E(m.name)}</b><b>${E(m.score)}</b></div><div class="small muted">${E(m.date)} · ${E(m.type)}</div>${m.objective?`<p class="small">Tujuan: ${E(m.objective)}</p>`:''}${m.feedback?`<p class="small">Catatan: ${E(m.feedback)}</p>`:''}</div>`).join('')}</div></details></div>`).join('')||empty('Nilai terpublikasi belum tersedia.')}</div>
+    <div class="card"><div class="panel-title">Penugasan & tindak lanjut</div><div class="grid grid2"><div class="notice">Selesai: <b>${t.done}</b><div class="small">Dikumpulkan: ${t.submitted}</div></div><div class="notice">Perlu perbaikan: <b>${t.needsRevision}</b><div class="small">Belum terkumpul: ${t.missing}</div></div></div><div class="stack section-gap">${t.recent.map(x=>`<div class="item row-between"><div><b>${E(x.title)}</b><div class="small muted">Batas ${E(niceDate(x.dueAt))}</div></div>${statusPill(x.status)}</div>`).join('')||empty('Belum ada tugas yang diterbitkan.')}</div></div></div>`;
+  html+=`<div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Catatan perkembangan perilaku</div><div class="stack">${b.recent.map(x=>`<div class="item"><div class="row-between">${x.kind==='POSITIF'?'<span class="pill green">Apresiasi</span>':'<span class="pill yellow">Pembinaan</span>'}<span class="small muted">${E(x.date)}</span></div><p>${E(x.description)}</p>${x.followUp?`<p class="small">Tindak lanjut: ${E(x.followUp)}</p>`:''}</div>`).join('')||empty('Belum ada catatan perilaku yang dipublikasikan.')}</div></div>
+    <div class="card"><div class="panel-title">Pesan perkembangan dari guru</div><div id="progress-notes" class="stack">${progressNotes(r)}</div></div></div>`;
+  if(role('ADMIN','GURU_KELAS'))html+=`<div class="card section-gap"><div class="panel-title">Catatan perkembangan untuk orang tua</div><p class="hint">Draft hanya terlihat staf. Publikasikan setelah catatan diperiksa agar orang tua dapat membacanya.</p><form id="progress-note-form"><input type="hidden" name="id"><div class="field"><label class="label">Catatan / pendampingan yang disarankan</label><textarea name="note" maxlength="2200" required placeholder="Ceritakan perkembangan, kekuatan, dan langkah pendampingan yang dapat dilakukan keluarga..."></textarea></div><div class="field"><label class="label">Publikasi</label><select name="status"><option value="DRAFT">Simpan draft</option><option value="PUBLISHED">Publikasikan kepada orang tua</option></select></div><div class="actions"><button type="submit" class="btn btn-primary">Simpan catatan perkembangan</button><button type="button" class="btn" data-action="clear-progress-note">Catatan baru</button></div></form></div>`;
+  host.innerHTML=html;
+}
+function progressNotes(r){return r.notes.map(x=>`<div class="item"><div class="row-between">${statusPill(x.status)}<span class="small muted">${E(x.date)}</span></div><p>${E(x.note)}</p>${role('ADMIN','GURU_KELAS')?`<button type="button" class="btn btn-sm section-gap" data-action="edit-progress-note" data-id="${E(x.id)}">Ubah catatan</button>`:''}</div>`).join('')||empty('Belum ada catatan perkembangan dari guru.');}
+function editProgressNote(id){const r=S.progress.report,f=$('#progress-note-form');if(!r||!f)return;const note=r.notes.find(x=>x.id===id);if(!note)return;f.elements.namedItem('id').value=id;f.elements.namedItem('note').value=note.note;f.elements.namedItem('status').value=note.status;f.scrollIntoView({behavior:'smooth',block:'center'});}
+function clearProgressNote(){const f=$('#progress-note-form');if(f)f.reset();if(f?.elements.namedItem('id'))f.elements.namedItem('id').value='';}
+async function saveProgressForm(f){
+  if(S.busy)return;const studentId=progressStudentId(),classId=S.classId,data=fd(f);
+  try{
+    busy(true);
+    const r=await call('saveProgressNote',{...data,studentId,classId});
+    forgetMenuCache('progressReport');
+    const existing=S.progress.report;
+    if(existing&&r.item){const i=existing.notes.findIndex(x=>x.id===r.id);if(i>=0)existing.notes[i]=r.item;else existing.notes.unshift(r.item);}
+    toast('Catatan perkembangan berhasil disimpan.');
+    clearProgressNote();
+    const notes=$('#progress-notes');if(notes&&existing)notes.innerHTML=progressNotes(existing);
+  }catch(err){console.error('Gagal simpan perkembangan',err);toast(err.message,true);}finally{busy(false);}
+}
+
+document.addEventListener('invalid',ev=>{
+  const f=ev.target.closest?.('form');
+  if(f&&['journal-form','assessment-form','task-form'].includes(f.getAttribute('id'))){
+    const input=ev.target;
+    toast('Lengkapi kolom '+(input.closest('.field')?.querySelector('label')?.textContent||input.name||'yang wajib diisi')+'.',true);
+  }
+},true);
+document.addEventListener('submit',async ev=>{
+  const f=ev.target;const formId=f?.getAttribute?.('id');if(!formId)return;ev.preventDefault();if(S.busy){toast('Sedang menyimpan data sebelumnya. Tunggu sebentar.');return;}
+  const d=fd(f);
+  if(f.hasAttribute('data-subject-owner')){const id=f.getAttribute('data-subject-owner');const data={classId:S.classId,mapelId:id,teacherId:fd(f).teacherId};try{busy(true);const r=await call('setSubjectOwner',data);if(r?.ok){toast('Pengampu mata pelajaran berhasil disimpan.');S.menuCache.clear();await loadHome();}}catch(err){toast('Gagal menyimpan pengampu: '+err.message,true);}finally{busy(false);}return;}
+  if(formId==='progress-note-form')return saveProgressForm(f);
+  if(formId==='journal-form')return v2save('saveJournal',{...d,classId:S.classId});
+  if(formId==='assessment-form'){const d=fd(f);if(f.elements.mapelId.disabled)d.mapelId=f.elements.mapelId.value;return v2save('saveAssessment',{...d,classId:S.classId});}
+  if(formId==='score-form'){
+    const rows=[...f.querySelectorAll('.att-student[data-student-id]')].map(tr=>({studentId:tr.dataset.studentId,score:tr.querySelector('.score-input').value,feedback:tr.querySelector('.score-note').value}));
+    const res=await v2save('saveScores',{assessmentId:f.dataset.id,rows},{refresh:false});if(res){forgetMenuCache('assessmentDetail');loadAssessmentDetail(f.dataset.id);}return;
+  }
+  if(formId==='task-form'){const d=fd(f);if(f.elements.mapelId.disabled)d.mapelId=f.elements.mapelId.value;return v2save('saveTask',{...d,classId:S.classId});}
+  if(formId==='submission-form'){
+    const files=[...f.elements.files.files];if(files.length>3){toast('Maksimal tiga file dalam satu kali pengumpulan.',true);return;}
+    const note=f.elements.note.value.trim();if(!note&&!files.length){toast('Isi keterangan atau pilih lampiran.',true);return;}
+    try{busy(true);
+      if(!files.length)await call('submitTask',{taskId:f.dataset.id,studentId:S.childId,note,files:[]});
+      else for(let i=0;i<files.length;i++){
+        const doc=await compressTaskFile(files[i]);
+        await call('submitTask',{taskId:f.dataset.id,studentId:S.childId,note:i===0?note:'',files:[doc]});
+      }
+      toast('Tugas berhasil dikumpulkan.');forgetMenuCache('taskDetail','taskList');
+      await loadTaskDetail(f.dataset.id,S.childId);
+    }catch(e){toast(e.message+' Jika beberapa berkas sempat terkirim, periksa daftar lampiran sebelum mencoba lagi.',true);await loadTaskDetail(f.dataset.id,S.childId);}
+    finally{busy(false);}return;
+  }
+  if(formId==='review-form'){const d=fd(f);const res=await v2save('reviewSubmission',{...d,taskId:f.dataset.id,studentId:f.dataset.student},{refresh:false});if(res)loadTaskDetail(f.dataset.id,f.dataset.student);return;}
+  if(formId==='task-comment-form'){const d=fd(f);const res=await v2save('commentTask',{...d,taskId:f.dataset.id,studentId:f.dataset.student},{refresh:false});if(res)loadTaskDetail(f.dataset.id,f.dataset.student);return;}
+  if(formId==='login-form') {try{busy(true);const loginStarted=Date.now();const r=await call('login',{...d,withHome:true});S.token=r.token;try{sessionStorage.setItem('sipandai_token',S.token);}catch(e){}S.user=r.user;S.attMode=r.user.role==='GURU_MAPEL'?'MAPEL':'HARIAN';S.attDate='';S.attMapel='';S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';S.menuCache.clear();clearTahDom();S.view='dashboard';S.learningTab=r.user.role==='ORANG_TUA'?'assessments':'journal';
+   if(r.user.mustChangePassword)passwordUI();
+   else if(r.home){
+     S.home=r.home;S.user=r.home.user;S.needsHome=false;S.classId=r.home.classId;S.childId=r.home.currentChild?.id||'';
+     baseUI();render();
+   }else await loadHome();
+   console.info('SIPANDAI: login & halaman awal '+(Date.now()-loginStarted)+' ms (termasuk respons jaringan)',r.perf||'');}catch(e){toast(e.message,true);}finally{busy(false);}return;}
+  if(formId==='change-password-form'){const r=await submitAction('changePassword',d,{refresh:false});if(r?.ok){S.token='';try{sessionStorage.removeItem('sipandai_token');}catch(e){}loginUI();toast('Password diganti. Silakan login dengan password baru.');}return;}
+  if(formId==='user-form')return submitAction('createUser',d,{credentials:true,refresh:false});
+  if(formId==='class-form')return submitAction('createClass',d);
+  if(formId==='subject-form')return submitAction('createSubject',d);
+  if(formId==='student-form'){const updating=!!d.id;const r=await submitAction(updating?'updateStudent':'addStudent',{...d,classId:S.classId});if(r?.updatedParentLogin)toast('NIS diperbarui. Username akun orang tua terkait juga berubah. Beri tahu orang tua secara pribadi.');return;}
+  if(formId==='parent-form')return submitAction('createParent',d,{credentials:true,refresh:false});
+  if(formId==='assign-form')return submitAction('assignTeacher',{...d,classId:S.classId});
+  if(formId==='link-parent-form')return submitAction('linkParent',d);
+  if(formId==='request-link-form')return submitAction('requestLink',d,{refresh:false});
+  if(formId==='notice-form')return submitAction('saveNotice',{...d,classId:S.classId,requireConfirm:d.requireConfirm==='YES'});
+  if(formId==='attendance-form'){const rows=[...f.querySelectorAll('.att-student[data-student-id]')].map(tr=>({studentId:tr.dataset.studentId,status:tr.querySelector('.att-status').value,note:tr.querySelector('.att-note').value}));const result=await submitAction('saveAttendance',{classId:S.classId,date:S.attDate,mode:S.attMode,mapelId:S.attMapel,sessionNo:S.sessionNo,rows,edit:!!S.att?.hasSaved&&S.attEdit},{refresh:false});if(result){forgetMenuCache('attendance');S.attEdit=false;S.att=null;loadAttendance();}return;}
+  if(formId==='behavior-form'){try{busy(true);const file=await readFile($('#behavior-file')?.files[0]);await submitAction('saveBehavior',{...d,file,classId:S.classId});}catch(e){toast(e.message,true);}finally{busy(false);}return;}
+  console.error('SIPANDAI: handler simpan tidak ditemukan untuk formulir',formId);
+  toast('Formulir '+formId+' belum memiliki proses penyimpanan. Hubungi pengelola.',true);
+});
+document.addEventListener('keydown',ev=>{if(ev.key==='Escape')toggleMobileMore(false);});
+document.addEventListener('click',ev=>{
+  const drawer=document.getElementById('mobile-more');
+  if(drawer?.classList.contains('open')&&!ev.target.closest('#mobile-more,.mobilebar'))toggleMobileMore(false);
+});
+document.addEventListener('click',async ev=>{
+  const b=ev.target.closest('[data-action]');if(!b)return;const action=b.dataset.action;
+  if(action==='nav'&&b.dataset.view==='more'){toggleMobileMore();return;}
+  if(action==='close-more'){toggleMobileMore(false);return;}
+  if(action==='learning-tab'){
+    const target=b.dataset.tab;
+    if(!isLearningView(target)||(role('ORANG_TUA')&&['journal','attendance'].includes(target)))return;
+    if(S.view===target)return;
+    S.learningTab=target;S.view=target;S.v2.fetchNo++;render();document.documentElement.scrollTop=0;return;
+  }
+  if(action==='nav'){
+    const requested=b.dataset.view;
+    const nextView=requested==='learning'?(role('ORANG_TUA')&&['journal','attendance'].includes(S.learningTab)?'assessments':S.learningTab):requested;
+    // Klik berulang pada menu aktif tidak membangun halaman atau memanggil server lagi.
+    if(nextView===S.view&&!S.needsHome){toggleMobileMore(false);return;}
+    S.view=nextView;
+    if(isLearningView(S.view))S.learningTab=S.view;
+    S.v2.fetchNo++;S.att=null;
+    toggleMobileMore(false);
+    if(S.needsHome){try{await loadHome();}catch(e){toast(e.message,true);}}
+    else render();
+    document.documentElement.scrollTop=0;return;
+  }
+  if(action==='refresh-progress'){S.progress.lastKey='';return loadProgress(true);}
+  if(action==='edit-progress-note')return editProgressNote(b.dataset.id);
+  if(action==='clear-progress-note')return clearProgressNote();
+  if(action==='import-students'){await importStudentBatch();return;}
+  if(action==='import-template'){downloadImportTemplate();return;}
+  if(action==='edit-student'){editStudentForm(b.dataset.id);return;}
+  if(action==='student-new'){resetStudentForm();return;}
+  if(action==='edit-attendance'){if(!S.att?.editable)return;S.attEdit=true;paintAttendance(S.att);return;}
+  if(action==='cancel-att-edit'){S.attEdit=false;paintAttendance(S.att);return;}
+  if(['archive-journal','archive-assessment','archive-task','archive-behavior'].includes(action)){
+    const info={
+      'archive-journal':['archiveJournal','Jurnal akan dihapus dari daftar aktif. Riwayatnya tersimpan untuk audit.','journal'],
+      'archive-assessment':['archiveAssessment','Asesmen beserta nilainya akan disembunyikan dari laporan dan akun orang tua. Lanjutkan?','assessments'],
+      'archive-task':['archiveTask','Tugas beserta pengumpulan tidak lagi ditampilkan. File tetap diarsipkan secara privat.','tasks'],
+      'archive-behavior':['archiveBehavior','Catatan perilaku akan disembunyikan dari guru dan orang tua.','behaviors']
+    }[action];
+    if(!await sipConfirm(info[1],{danger:true,title:'Konfirmasi pengarsipan',confirmText:'Ya, arsipkan'}))return;
+    try{busy(true);const res=await call(info[0],{id:b.dataset.id});if(!res?.ok)throw new Error(res?.error||'Tidak dapat mengarsipkan data.');
+      forgetMenuCache('journalList','assessmentList','assessmentDetail','taskList','taskDetail');
+      S.progress.lastKey='';
+      if(info[2]==='journal'){S.v2.journal=S.v2.journal.filter(x=>x.id!==b.dataset.id);paintJournal();}
+      else if(info[2]==='assessments'){S.v2.assessments=S.v2.assessments.filter(x=>x.id!==b.dataset.id);S.v2.assessmentId='';paintAssessments();const h=$('#assessment-detail');if(h)h.innerHTML='';}
+      else if(info[2]==='tasks'){S.v2.tasks=S.v2.tasks.filter(x=>x.id!==b.dataset.id);S.v2.taskId='';paintTasks();const h=$('#task-detail-host');if(h)h.innerHTML='';}
+      else {S.needsHome=true;await loadHome();}
+      toast('Data telah diarsipkan dan tidak lagi ditampilkan.');
+    }catch(err){console.error('SIPANDAI archive failed',err);toast('Gagal menghapus: '+err.message,true);}finally{busy(false);}return;
+  }
+  if(action==='edit-journal'){editJournal(b.dataset.id);return;}
+  if(action==='clear-journal'){const f=$('#journal-form');if(f){f.reset();f.elements.id.value='';}return;}
+  if(action==='assessment-detail'){loadAssessmentDetail(b.dataset.id);return;}
+  if(action==='edit-assessment'){editAssessment(b.dataset.id);return;}
+  if(action==='clear-assessment'){const f=$('#assessment-form');if(f){f.reset();f.elements.id.value='';f.elements.mapelId.disabled=false;}return;}
+  if(action==='publish-assessment'){
+    const pub=b.dataset.publish==='true';if(!await sipConfirm(pub?'Publikasikan nilai sehingga dapat dilihat orang tua?':'Tarik publikasi agar nilai dapat dikoreksi?',{title:'Konfirmasi publikasi nilai'}))return;
+    return v2save('publishAssessment',{id:b.dataset.id,publish:pub});
+  }
+  if(action==='task-detail'){loadTaskDetail(b.dataset.id);return;}
+  if(action==='edit-task'){editTask(b.dataset.id);return;}
+  if(action==='clear-task'){const f=$('#task-form');if(f){f.reset();f.elements.id.value='';f.elements.mapelId.disabled=false;}return;}
+  if(action==='task-status'){
+    if(!await sipConfirm(b.dataset.status==='PUBLISHED'?'Publikasikan tugas untuk orang tua?':'Tutup pengumpulan tugas?',{title:'Konfirmasi status tugas'}))return;
+    return v2save('taskStatus',{id:b.dataset.id,status:b.dataset.status});
+  }
+  if(action==='task-file'){openTaskFile(b.dataset.id);return;}
+  if(action==='mobile-more'){toggleMobileMore();return;}
+  if(action==='logout'){busy(true);processMessage('Mengakhiri sesi…');try{if(S.token)await call('logout');}catch(e){}finally{busy(false);}S.token='';S.user=null;S.home=null;S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';S.menuCache.clear();clearTahDom();S.needsHome=false;try{sessionStorage.removeItem('sipandai_token');}catch(e){}loginUI();return;}
+  if(action==='switch-child'){clearTahDom();S.progress.lastKey='';S.childId=b.dataset.id;S.v2.assessmentId='';S.v2.taskId='';S.classId=(S.home.children.find(x=>x.id===S.childId)||{}).classId||S.classId;try{await loadHome();}catch(e){toast(e.message,true);}return;}
+  if(action==='confirm-notice')return submitAction('confirmNotice',{noticeId:b.dataset.id});
+  if(action==='publish-notice')return submitAction('publishNotice',{id:b.dataset.id});
+  if(action==='publish-behavior')return submitAction('publishBehavior',{id:b.dataset.id});
+  if(action==='load-att'){S.attEdit=false;S.attDate=$('#att-date')?.value||S.home.serverDate;S.attMapel=$('#att-subject')?.value||S.attMapel;S.sessionNo=$('#att-session')?.value||'1';$('#att-content').innerHTML=loader();return loadAttendance();}
+  if(action==='select-att-status'){
+     const card=b.closest('.att-student');const select=card?.querySelector('.att-status');if(!select||select.disabled)return;
+     select.value=b.dataset.status;card.querySelectorAll('.att-choice-btn').forEach(btn=>{const active=btn.dataset.status===select.value;btn.classList.toggle('selected',active);btn.setAttribute('aria-pressed',String(active));});return;
+   }
+   if(action==='toggle-att-note'){const field=b.closest('.att-student')?.querySelector('.att-note-container');if(field){field.style.display=field.style.display==='none'?'block':'none';if(field.style.display==='block')field.querySelector('input')?.focus();}return;}
+   if(action==='all-present'){document.querySelectorAll('.att-status:not(:disabled)').forEach(s=>{s.value='H';const card=s.closest('.att-student');card?.querySelectorAll('.att-choice-btn').forEach(btn=>{const active=btn.dataset.status==='H';btn.classList.toggle('selected',active);btn.setAttribute('aria-pressed',String(active));});});toast('Semua siswa ditandai Hadir. Jangan lupa simpan.');return;}
+  if(action==='view-file')return openBehaviorFile(b.dataset.id);
+  if(action==='review-link'){if(!await sipConfirm('Pastikan hubungan keluarga telah diverifikasi. Lanjutkan?',{title:'Verifikasi hubungan keluarga'}))return;const result=await submitAction('reviewRequest',{id:b.dataset.id,status:b.dataset.status},{refresh:false});if(result)renderRequests();return;}
+  if(action==='reset-user'){if(!await sipConfirm('Reset password akun ini? Sesi lama akan dibatalkan.',{title:'Reset password',confirmText:'Ya, reset password',danger:true}))return;return submitAction('resetPassword',{userId:b.dataset.id},{credentials:true,refresh:false});}
+  if(action==='copy-credential'){try{await navigator.clipboard.writeText(b.dataset.value);toast('Kredensial disalin. Sampaikan secara pribadi.');}catch(e){toast('Gagal menyalin otomatis. Silakan salin teks kredensial.',true);}return;}
+});
+document.addEventListener('change',ev=>{if(ev.target.id==='progress-student'){S.progress.studentId=ev.target.value;loadProgress();return;}if(ev.target.id==='task-pick-student'){loadTaskDetail(S.v2.taskId,ev.target.value);return;}if(ev.target.id==='switch-class'){clearTahDom();S.progress.lastKey='';S.classId=ev.target.value;S.v2.assessmentId='';S.v2.taskId='';S.attMapel='';S.att=null;S.attEdit=false;loadHome().catch(e=>toast(e.message,true));}if(ev.target.id==='att-mode'){S.attMode=ev.target.value;S.att=null;S.attEdit=false;renderAttendance();}});
+(async()=>{if(!S.token){loginUI();return;}try{await loadHome();}catch(e){S.token='';try{sessionStorage.removeItem('sipandai_token');}catch(x){}loginUI();toast('Sesi berakhir. Silakan login kembali.',true);}})();
+
+/* SIPANDAI v3.5: laporan dan cetak via browser; ekspor tabel ke CSV kompatibel Excel. */
+let printableData=null;
+const PRINT_TITLES={tahfidzStudent:'Laporan Tahfidz Siswa',tahfidzClass:'Rekap Tahfidz Kelas',students:'Daftar Siswa',attendance:'Rekap Absensi',journal:'Jurnal Pembelajaran',scores:'Daftar Nilai Asesmen',tasks:'Rekap Penugasan',behaviors:'Catatan Perilaku',progress:'Laporan Perkembangan Belajar'};
+const PRINT_GROUPS=[
+ {id:'akademik',icon:'▤',title:'Akademik',description:'Daftar siswa, jurnal, nilai, dan rekap penugasan.',types:['students','journal','scores','tasks']},
+ {id:'kehadiran',icon:'▦',title:'Kehadiran',description:'Rekap kehadiran harian atau per mata pelajaran.',types:['attendance']},
+ {id:'tahfidz',icon:'◉',title:'Tahfidz',description:'Laporan hafalan individu dan rekap kelas.',types:['tahfidzStudent','tahfidzClass']},
+ {id:'perkembangan',icon:'◴',title:'Perkembangan',description:'Laporan perkembangan belajar individual.',types:['progress']},
+ {id:'pembinaan',icon:'♡',title:'Pembinaan',description:'Rekap apresiasi dan catatan perilaku.',types:['behaviors']}
+];
+let PRINT_ACTIVE='akademik';
+function printGroups(){return PRINT_GROUPS.filter(g=>!role('ORANG_TUA')||['tahfidz','perkembangan'].includes(g.id));}
+function printActiveGroup(){return printGroups().find(g=>g.id===PRINT_ACTIVE)||printGroups()[0];}
+function printTypeOptions(group){return group.types.filter(t=>!role('ORANG_TUA')||['progress','tahfidzStudent'].includes(t)).map(t=>`<option value="${t}">${E(PRINT_TITLES[t])}</option>`).join('');}
+function renderPrinting(){
+ const parent=role('ORANG_TUA'),k=S.home?.students||[],today=S.home?.serverDate||new Date().toISOString().slice(0,10);
+ const group=printActiveGroup();PRINT_ACTIVE=group.id;
+ let body=head('Cetak & Laporan','Pilih kategori dokumen, atur periode, lalu tampilkan pratinjau tanpa berpindah halaman.');
+ body+=`<div class="print-intro"><b>Pusat Dokumen SIPANDAI</b><p class="hint">Satu tempat untuk laporan akademik, kehadiran, Tahfidz, dan perkembangan. Tab tidak mengambil data baru dari server.</p></div>`;
+ body+=`<nav class="module-tabs print-tabs" aria-label="Kategori laporan">${printGroups().map(g=>`<button type="button" class="module-tab ${g.id===PRINT_ACTIVE?'active':''}" data-action="print-tab" data-tab="${g.id}" aria-current="${g.id===PRINT_ACTIVE?'page':'false'}"><span aria-hidden="true">${g.icon}</span>${g.title}</button>`).join('')}</nav>`;
+ body+=`<div class="grid grid2 print-main-grid"><div class="card"><div class="panel-title">Pengaturan dokumen</div><p id="print-group-description" class="hint">${E(group.description)}</p><form id="print-form" class="section-gap"><div class="form-grid"><div class="field wide"><label class="label">Jenis dokumen</label><select name="type" id="print-type">${printTypeOptions(group)}</select></div>${parent?'':`<div class="field"><label class="label">Siswa (laporan individual)</label><select name="studentId" id="print-student">${fillOptions(k,k[0]?.id||'','Pilih siswa')}</select></div>`}<div class="field"><label class="label">Dari tanggal</label><input type="date" name="from" value="${E(today.slice(0,7)+'-01')}"></div><div class="field"><label class="label">Sampai tanggal</label><input type="date" name="to" value="${E(today)}"></div>${parent?'':`<div class="field"><label class="label">Jenis absensi</label><select name="mode"><option value="HARIAN">Harian</option><option value="MAPEL">Per mata pelajaran</option></select></div>`}<div class="field"><label class="label">Bulan aktivitas Tahfidz</label><input type="month" name="period" value="${E(today.slice(0,7))}"></div></div><div class="actions"><button type="submit" class="btn btn-primary">Buat pratinjau</button></div></form></div><div class="card print-help"><div class="panel-title">Petunjuk cetak</div><div class="stack"><div class="item"><b>1. Pilih jenis laporan</b><p class="hint">Gunakan tab kategori di atas. Setiap tab memiliki pilihan laporan yang relevan.</p></div><div class="item"><b>2. Periksa pratinjau</b><p class="hint">Pastikan kelas, siswa, periode, dan data sudah sesuai.</p></div><div class="item"><b>3. Cetak atau simpan PDF</b><p class="hint">Pilih printer atau Simpan sebagai PDF dari dialog browser; ekspor CSV tersedia untuk laporan tabel.</p></div></div></div></div>`;
+ body+=`<div id="print-preview" class="card section-gap">${empty('Pilih dokumen lalu klik Buat pratinjau.')}</div>`;
+ setContent(body);
+}
+function switchPrintTab(id){
+ const group=printGroups().find(g=>g.id===id);if(!group)return;
+ PRINT_ACTIVE=id;
+ document.querySelectorAll('.print-tabs .module-tab').forEach(b=>{const active=b.dataset.tab===id;b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');});
+ const select=$('#print-type');if(select)select.innerHTML=printTypeOptions(group);
+ const desc=$('#print-group-description');if(desc)desc.textContent=group.description;
+ printableData=null;
+ const preview=$('#print-preview');if(preview)preview.innerHTML=empty('Kategori diubah. Buat pratinjau untuk laporan yang dipilih.');
+}
+/* Format cetak SIPANDAI: tampilan setara dashboard tetapi optimal untuk A4 dan PDF browser. */
+function sipDocShell(title,subtitle,content,meta=''){
+ const stamp=new Date().toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'});
+ return `<article class="sip-doc"><header class="sip-doc-head"><div class="sip-doc-brand"><div class="sip-doc-symbol">S</div><div><b>SIPANDAI</b><small>Informasi Pembelajaran & Pendampingan Anak</small></div></div><span class="sip-doc-type">LAPORAN SEKOLAH</span></header>
+ <section class="sip-doc-title"><p class="sip-doc-eyebrow">Dokumen perkembangan pembelajaran</p><h1>${E(title)}</h1><p>${E(subtitle)}</p></section>
+ ${meta?`<div class="sip-doc-meta">${meta}</div>`:''}${content}
+ <footer class="sip-doc-footer"><span>Dicetak dari SIPANDAI · ${E(stamp)}</span><span>Data sesuai catatan yang tersedia dalam sistem</span></footer></article>`;
+}
+function sipMetric(label,number,help='') {return `<div class="sip-doc-metric"><span>${E(label)}</span><b>${E(number)}</b>${help?`<small>${E(help)}</small>`:''}</div>`;}
+function sipSection(title,body){return `<section class="sip-doc-card"><h2>${E(title)}</h2>${body}</section>`;}
+function sipMiniBar(value){return `<div class="sip-doc-bar"><span style="width:${Math.min(100,Math.max(0,Number(value)||0))}%"></span></div>`;}
+function printTable(data){
+ const table=`<div class="sip-doc-table-scroll"><table class="sip-print-table"><thead><tr>${data.headers.map(h=>`<th>${E(h)}</th>`).join('')}</tr></thead><tbody>${data.rows.map(row=>`<tr>${row.map(c=>`<td>${E(c??'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+ return sipDocShell(PRINT_TITLES[data.type]||'Laporan SIPANDAI',`Kelas ${data.className||'-'}`,sipSection('Rincian data',table),`<div><strong>${E(data.from||'Semua tanggal')}</strong><small>Dari</small></div><div><strong>${E(data.to||'Sekarang')}</strong><small>Sampai</small></div><div><strong>${data.rows.length}</strong><small>Baris data</small></div>`);
+}
+function printTahSummary(t){
+ if(!t)return '';
+ return sipSection('Tahfidz & Murojaah',
+ `<div class="sip-doc-stats">${sipMetric('Target tuntas',t.doneTarget+' / '+t.totalTarget+' ayat')}${sipMetric('Hafalan terverifikasi',t.memorizedVerses+' ayat')}${sipMetric('Murojaah',t.murojaahSessions+' sesi',t.murojaahDays+' hari')}</div>
+ ${sipMiniBar(t.percentage)}<p class="sip-doc-small">${t.percentage===null?'Target belum ditetapkan':t.percentage+'% dari target kelas telah dituntaskan'}</p>
+ <div class="sip-doc-grid">${(t.hafalan||[]).map(x=>`<div class="sip-doc-row"><strong>${E(x.surahName)}</strong><small>${E(x.ranges)} · ${x.count} ayat</small></div>`).join('')||'<p>Belum ada hafalan tercatat.</p>'}</div>`);
+}
+function printProgress(r,t){const a=r.attendance||{},subjects=r.subjects||[],tasks=r.tasks||{},b=r.behavior||{};
+ const stats=`<div class="sip-doc-stats">${sipMetric('Kehadiran',a.percentage===null?'-':a.percentage+'%',`${a.present||0} dari ${a.total||0} hari`)}${sipMetric('Asesmen terpublikasi',r.marksCount||0)}${sipMetric('Tugas selesai',tasks.done||0)}</div>`;
+ const scores=sipSection('Perkembangan per Mata Pelajaran',`<div class="sip-doc-grid">${subjects.map(s=>`<div class="sip-doc-subject"><div class="sip-doc-subject-head"><b>${E(s.name)}</b><b>${E(s.average)}</b></div>${sipMiniBar(s.average)}<small>${s.count} asesmen · Terakhir: ${E(s.latest)}</small></div>`).join('')||'<p>Nilai yang sudah dipublikasikan belum tersedia.</p>'}</div>`);
+ const notes=sipSection('Catatan dan Pendampingan',`<div class="sip-doc-notes">${(r.notes||[]).filter(x=>x.status==='PUBLISHED').map(x=>`<div><small>${E(x.date)}</small><p>${E(x.note)}</p></div>`).join('')||'<p>Belum ada catatan perkembangan yang dipublikasikan.</p>'}</div>`);
+ const summary=sipSection('Aktivitas dan Pembinaan',`<div class="sip-doc-stats">${sipMetric('Tugas perlu perbaikan',tasks.needsRevision||0)}${sipMetric('Tugas belum dikumpulkan',tasks.missing||0)}${sipMetric('Apresiasi perilaku',b.positive||0)}</div>`);
+ return sipDocShell('Laporan Perkembangan Belajar',r.student.name,stats+scores+(t?printTahSummary(t):'')+summary+notes+`<p class="sip-doc-disclaimer">${E(r.disclaimer||'Laporan informatif, bukan pengganti rapor resmi.')}</p>`,`<div><strong>${E(r.student.nis)}</strong><small>NIS</small></div><div><strong>${E(r.className)}</strong><small>Kelas</small></div>`);
+}
+function printTahfidz(r){
+ const stats=`<div class="sip-doc-stats">${sipMetric('Target tuntas',r.doneTarget+' / '+r.totalTarget)}${sipMetric('Hafalan tercatat',r.memorizedVerses+' ayat')}${sipMetric('Murojaah terverifikasi',r.murojaahSessions+' sesi',r.murojaahDays+' hari')}</div>`;
+ const targets=sipSection('Target Hafalan Kelas',`<div class="sip-doc-grid">${r.targets.map(t=>`<div class="sip-doc-subject"><div class="sip-doc-subject-head"><strong>${E(t.surahName)} · Ayat ${t.startAyah}–${t.endAyah}</strong><b>${t.done}/${t.count}</b></div>${sipMiniBar(t.count?100*t.done/t.count:0)}<small>${E(t.semester)} ${t.dueDate?'· '+E(t.dueDate):''}</small></div>`).join('')||'<p>Target kelas belum ditentukan.</p>'}</div>`);
+ const mastered=sipSection('Hafalan yang Sudah Dimiliki',`<div class="sip-doc-grid">${r.hafalan.map(x=>`<div class="sip-doc-row"><b>${E(x.surahName)} <span>${x.count} ayat</span></b><small>Ayat tuntas: ${E(x.ranges)}</small></div>`).join('')||'<p>Belum ada hafalan yang dinyatakan tuntas.</p>'}</div>`);
+ const entries=sipSection('Riwayat Setoran & Murojaah Terbaru',`<table class="sip-print-table"><thead><tr><th>Tanggal</th><th>Kegiatan</th><th>Surah / Ayat</th><th>Hasil</th><th>Arahan Guru</th></tr></thead><tbody>${r.entries.slice(0,25).map(x=>`<tr><td>${E(x.date)}</td><td>${E(tahKinds[x.kind]||x.kind)}</td><td>${E(x.surahName)} ${x.startAyah}–${x.endAyah}</td><td>${E(tahStatuses[x.status]||x.status)}</td><td>${E(x.note)}</td></tr>`).join('')||'<tr><td colspan="5">Belum ada setoran</td></tr>'}</tbody></table>`);
+ const awards=r.awards.length?sipSection('Apresiasi dari Guru',r.awards.map(x=>`<div class="sip-doc-highlight"><strong>${E(x.title)}</strong><p>${E(x.note)}</p><small>${E(x.period||x.date)}</small></div>`).join('')):'';
+ return sipDocShell('Laporan Tahfidz & Murojaah',r.student.name,stats+targets+mastered+entries+awards+'<p class="sip-doc-disclaimer">Capaian hafalan adalah ayat unik yang telah diverifikasi dan dinyatakan tuntas. Jumlah sesi murojaah tidak menambah hitungan hafalan.</p>',`<div><strong>${E(r.student.nis)}</strong><small>NIS</small></div><div><strong>${E(r.className)}</strong><small>Kelas</small></div>`);
+}
+function printTahfidzClass(r){
+ const target=(r.targets||[]).map(t=>`${t.surahName} ${t.startAyah}–${t.endAyah}`).join(' · ');
+ const table=`<table class="sip-print-table"><thead><tr><th>No</th><th>NIS</th><th>Siswa</th><th>Ayat tuntas/target</th><th>Persentase</th><th>Murojaah</th><th>Hari aktif</th></tr></thead><tbody>${r.students.map((x,i)=>`<tr><td>${i+1}</td><td>${E(x.nis)}</td><td>${E(x.name)}</td><td>${x.done}/${x.target}</td><td>${x.percentage??'-'}%</td><td>${x.sessions}</td><td>${x.days}</td></tr>`).join('')}</tbody></table>`;
+ return sipDocShell('Rekap Tahfidz & Murojaah Kelas',r.className+' · Bulan '+(r.period||''),sipSection('Daftar Capaian Siswa',table)+`<p class="sip-doc-disclaimer">Rekap berisi catatan setoran yang diverifikasi guru. Gunakan secara internal sebagai dasar pembinaan; hindari mengumumkan peringkat murid.</p>`,`<div><strong>${r.students.length}</strong><small>Siswa</small></div><div><strong>${E(target||'Belum ada target')}</strong><small>Target aktif</small></div>`);
+}
+function renderPrintDoc(data){
+ if(data.kind==='progress')return printProgress(data.report,data.tahfidz);
+ if(data.kind==='tahfidzStudent')return printTahfidz(data.report);
+ if(data.kind==='tahfidzClass')return printTahfidzClass(data.report);
+ return printTable(data);
+}
+
+function createPrintable(doc){document.getElementById('sip-print-root')?.remove();const wrap=document.createElement('div');wrap.id='sip-print-root';wrap.innerHTML=doc;document.body.appendChild(wrap);}
+function previewPrint(data){printableData=data;const wrap=$('#print-preview');if(!wrap)return;
+ const doc=renderPrintDoc(data);
+ wrap.innerHTML=`<div class="row-between"><strong>Pratinjau dokumen</strong><div class="actions"><button type="button" class="btn btn-primary" data-action="print-now">Cetak / Simpan PDF</button>${data.kind==='table'?'<button type="button" class="btn" data-action="export-csv">Unduh CSV untuk Excel</button>':''}</div></div><div class="sip-print-preview">${doc}</div>`;
+}
+function printNow(){if(!printableData)return;createPrintable(renderPrintDoc(printableData));window.print();}
+function csvCell(x){let v=String(x??'');if(/^[=+@\-]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"';}
+function exportCsv(){const d=printableData;if(!d||d.kind!=='table')return;const all=[d.headers,...d.rows].map(row=>row.map(csvCell).join(',')).join('\r\n');const blob=new Blob(['\ufeff'+all],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='SIPANDAI_'+d.type+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);}
+document.addEventListener('submit',async ev=>{if(ev.target.getAttribute('id')!=='print-form')return;ev.preventDefault();const f=ev.target,fd=Object.fromEntries(new FormData(f).entries());try{busy(true);const data=await call('printData',{...fd,classId:S.classId,studentId:role('ORANG_TUA')?S.childId:fd.studentId});previewPrint(data);}catch(err){toast('Gagal membuat laporan: '+err.message,true);}finally{busy(false);}},true);
+document.addEventListener('click',ev=>{const b=ev.target.closest('[data-action]');if(!b)return;if(b.dataset.action==='print-tab'){ev.preventDefault();switchPrintTab(b.dataset.tab);return;}if(b.dataset.action==='print-now'){ev.preventDefault();printNow();}if(b.dataset.action==='export-csv'){ev.preventDefault();exportCsv();}},true);
+
+
+/* ===== SIPANDAI v3.6 | Modul Tahfidz & Murojaah ===== */
+const TAH={key:'',settings:null,klass:null,detail:null,studentId:'',period:'',request:0,tab:'overview',viewClass:'',savedDom:null};
+const tahStatuses={TUNTAS:'Tuntas',PENGUATAN:'Lancar, perlu penguatan',PERBAIKAN:'Perlu perbaikan',ULANG:'Mengulang setoran'};
+const tahKinds={SETORAN:'Setoran hafalan',MUROJAAH:'Murojaah'};
+function tahSurahOptions(selected='78'){
+ const list=TAH.settings?.surahs||[];
+ return list.map(x=>`<option value="${x.number}" ${String(x.number)===String(selected)?'selected':''}>${x.number}. ${E(x.name)} (${x.verses} ayat)</option>`).join('');
+}
+function tahSelect(name,label,selected='78'){
+ return `<div class="field"><label class="label">${E(label)}</label><select name="${E(name)}" class="tah-surah" required>${tahSurahOptions(selected)}</select></div>`;
+}
+function tahAyatInputs(start='1',end='10'){
+ return `<div class="form-grid"><div class="field"><label class="label">Ayat awal</label><input type="number" min="1" max="286" name="startAyah" value="${E(start)}" required></div><div class="field"><label class="label">Ayat akhir</label><input type="number" min="1" max="286" name="endAyah" value="${E(end)}" required></div></div>`;
+}
+function tahStudentOptions(selected){
+ const list=S.home?.students||[];
+ return list.map(x=>`<option value="${E(x.id)}" ${x.id===selected?'selected':''}>${E(x.name)} — ${E(x.nis)}</option>`).join('');
+}
+function tahTeacherForm(){
+ const setting=TAH.settings;if(!setting?.canManage)return '';
+ const chosen=new Set(setting.assignedTeacherIds||[]),teachers=(setting.teachers||[]).filter(x=>x.id!==S.user.id);
+ return `<div class="card"><div class="panel-title">Guru Tahfidz yang bertugas</div><p class="hint">Guru Kelas selalu dapat mencatat Tahfidz. Pilih Guru Tahfidz tambahan yang memiliki akun aktif. Guru ini juga bisa menerima dan mencatat setoran.</p><div class="stack section-gap">${teachers.length?teachers.map(t=>`<div class="row-between item"><div><b>${E(t.name)}</b><div class="small muted">${E(t.role.replace('_',' '))}</div></div><button type="button" class="btn btn-sm ${chosen.has(t.id)?'btn-danger':'btn-outline'}" data-action="tah-teacher" data-id="${E(t.id)}" data-active="${chosen.has(t.id)?'false':'true'}">${chosen.has(t.id)?'Cabut tugas':'+ Tugaskan'}</button></div>`).join(''):empty('Belum ada akun Guru Tahfidz. Admin perlu membuat akun Guru Mapel terlebih dahulu.')}</div></div>`;
+}
+function tahTargetForm(){return `<div class="card"><div class="panel-title">Target hafalan kelas</div><p class="hint">Satu target berlaku untuk seluruh siswa pada kelas aktif; capaian siswa dihitung masing-masing. Bisa membuat lebih dari satu surah.</p><form id="tah-target-form" class="section-gap"><input type="hidden" name="id">${tahSelect('surahNo','Surah target')}${tahAyatInputs(1,40)}<div class="form-grid"><div class="field"><label class="label">Semester</label><select name="semester"><option>Ganjil</option><option>Genap</option></select></div><div class="field"><label class="label">Target selesai (opsional)</label><input type="date" name="dueDate"></div></div><div class="field"><label class="label">Catatan target (opsional)</label><input name="notes" maxlength="400" placeholder="Contoh: target semester ganjil"></div><div class="actions"><button type="submit" class="btn btn-primary">Simpan target kelas</button><button type="reset" class="btn">Target baru</button></div></form><div class="stack section-gap">${(TAH.settings?.targets||[]).map(t=>`<div class="item row-between"><div><b>${E(t.surahName)} · Ayat ${E(t.startAyah)}–${E(t.endAyah)}</b><div class="small muted">Semester ${E(t.semester)} ${t.dueDate?'· Selesai '+E(t.dueDate):''}</div></div><div class="actions"><button class="btn btn-sm" data-action="tah-edit-target" data-id="${E(t.id)}">Edit</button><button class="btn btn-sm btn-danger" data-action="tah-archive" data-kind="target" data-id="${E(t.id)}">Arsipkan</button></div></div>`).join('')||empty('Belum ada target hafalan untuk kelas ini.')}</div></div>`;}
+function tahBaselineForm(){return `<div class="card"><div class="panel-title">Catat hafalan yang sudah dimiliki</div><p class="hint">Gunakan untuk hafalan yang telah diverifikasi sebelum masuk SIPANDAI atau sebelum target saat ini. Tidak perlu memasukkan ulang setiap ayat satu per satu.</p><form id="tah-baseline-form"><div class="field"><label class="label">Siswa</label><select name="studentId" required>${tahStudentOptions(TAH.studentId)}</select></div>${tahSelect('surahNo','Surah yang telah dikuasai')}${tahAyatInputs(1,10)}<div class="field"><label class="label">Keterangan</label><input name="note" maxlength="800" placeholder="Contoh: diverifikasi melalui tes awal"></div><button type="submit" class="btn btn-primary">Simpan hafalan awal</button></form></div>`;}
+function tahEntryForm(){return `<div class="card" id="tah-entry-card"><div class="panel-title">Catat setoran / murojaah</div><form id="tah-entry-form"><input type="hidden" name="id"><div class="form-grid"><div class="field"><label class="label">Nama siswa</label><select name="studentId" required>${tahStudentOptions(TAH.studentId)}</select></div><div class="field"><label class="label">Tanggal</label><input name="date" type="date" value="${E(S.home?.serverDate||'')}" required></div><div class="field"><label class="label">Jenis kegiatan</label><select name="kind"><option value="SETORAN">Setoran hafalan baru</option><option value="MUROJAAH">Murojaah hafalan</option></select></div>${tahSelect('surahNo','Surah')}</div>${tahAyatInputs(1,10)}<div class="form-grid"><div class="field"><label class="label">Hasil setoran</label><select name="status">${Object.entries(tahStatuses).map(([v,l])=>`<option value="${v}">${E(l)}</option>`).join('')}</select></div><div class="field"><label class="label">Kelancaran</label><select name="fluency"><option value="">Belum dinilai</option><option value="BAIK">Baik</option><option value="CUKUP">Cukup</option><option value="BIMBINGAN">Perlu bimbingan</option></select></div><div class="field"><label class="label">Tajwid</label><select name="tajwid"><option value="">Belum dinilai</option><option value="BAIK">Baik</option><option value="CUKUP">Cukup</option><option value="BIMBINGAN">Perlu bimbingan</option></select></div><div class="field"><label class="label">Makhraj</label><select name="makhraj"><option value="">Belum dinilai</option><option value="BAIK">Baik</option><option value="CUKUP">Cukup</option><option value="BIMBINGAN">Perlu bimbingan</option></select></div></div><div class="field"><label class="label">Catatan dan arahan murojaah untuk rumah</label><textarea name="note" maxlength="1000" placeholder="Contoh: ulangi ayat 1–10 dengan pendampingan orang tua"></textarea></div><div class="field"><label class="label"><input type="checkbox" name="published" checked style="width:auto;min-height:0"> Bagikan catatan ini kepada orang tua</label></div><div class="actions"><button type="submit" class="btn btn-primary">Simpan setoran</button><button type="reset" class="btn">Setoran baru</button></div></form></div>`;}
+function tahAwardForm(){return `<div class="card"><div class="panel-title">Apresiasi & reward Tahfidz</div><p class="hint">Apresiasi diberikan oleh guru berdasarkan ketekunan, usaha, dan kualitas murojaah. Saran siswa aktif hanya terlihat oleh guru, bukan papan peringkat publik.</p><form id="tah-award-form"><div class="field"><label class="label">Siswa</label><select name="studentId">${tahStudentOptions(TAH.studentId)}</select></div><div class="form-grid"><div class="field"><label class="label">Judul apresiasi</label><input name="title" maxlength="130" placeholder="Contoh: Istiqamah Murojaah" required></div><div class="field"><label class="label">Periode</label><input name="period" maxlength="80" value="${E((S.home?.serverDate||'').slice(0,7))}"></div></div><div class="field"><label class="label">Alasan dan catatan guru</label><textarea name="note" maxlength="900" placeholder="Contoh: rajin murojaah dengan bacaan yang terus membaik"></textarea></div><label class="label"><input type="checkbox" name="published" checked style="width:auto;min-height:0"> Tampilkan apresiasi pada akun orang tua</label><div class="actions"><button type="submit" class="btn btn-primary">Berikan apresiasi</button></div></form></div>`;}
+function tahProgressBar(pct){return `<div class="progress-meter"><span style="width:${Math.max(0,Math.min(100,Number(pct)||0))}%"></span></div>`;}
+function tahSuggestNext(r){
+ const form=$('#tah-entry-form');if(!form||form.elements.namedItem('id')?.value||form.elements.namedItem('kind')?.value==='MUROJAAH')return;
+ for(const target of r.targets||[]){
+   const saved=(r.hafalan||[]).find(x=>Number(x.surahNo)===Number(target.surahNo));const have=new Set();
+   (saved?.ranges||'').split(',').forEach(part=>{const m=part.trim().match(/^(\d+)(?:[–-](\d+))?$/);if(!m)return;for(let i=Number(m[1]);i<=Number(m[2]||m[1]);i++)have.add(i);});
+   for(let a=target.startAyah;a<=target.endAyah;a++)if(!have.has(a)){
+      form.elements.namedItem('surahNo').value=String(target.surahNo);
+      form.elements.namedItem('startAyah').value=a;
+      form.elements.namedItem('endAyah').value=Math.min(a+4,target.endAyah);
+      return;
+   }
+ }
+}
+function tahEntryList(detail,editable){return (detail.entries||[]).map(x=>`<div class="item"><div class="row-between wrap"><b>${E(tahKinds[x.kind]||x.kind)} · ${E(x.surahName)} ${E(x.startAyah)}–${E(x.endAyah)}</b><span class="small muted">${E(x.date)}</span></div><div class="small muted">${E(tahStatuses[x.status]||x.status)} · Kelancaran: ${E(x.fluency||'—')} · Tajwid: ${E(x.tajwid||'—')} · Makhraj: ${E(x.makhraj||'—')}</div>${x.note?`<p class="small section-gap">${E(x.note)}</p>`:''}${editable?`<div class="actions"><button class="btn btn-sm" data-action="tah-edit-entry" data-id="${E(x.id)}">Edit</button><button class="btn btn-sm btn-danger" data-action="tah-archive" data-kind="entry" data-id="${E(x.id)}">Arsipkan</button></div>`:x.note?`<div class="actions">${x.homeConfirmed?'<span class="pill green">✓ Sudah didampingi di rumah</span>':`<button type="button" class="btn btn-sm btn-outline" data-action="tah-confirm-home" data-id="${E(x.id)}">Konfirmasi pendampingan rumah</button>`}</div>`:''}</div>`).join('')||empty('Belum ada riwayat setoran atau murojaah.');}
+function tahDetailMarkup(r){
+ const pct=r.percentage;
+ return `<div class="card"><div class="row-between wrap"><div><div class="panel-title" style="margin:0">${E(r.student.name)}</div><p class="small muted">NIS ${E(r.student.nis)} · ${E(r.className)}</p></div><span class="pill green">${pct===null?'Belum ada target':pct+'% target'}</span></div><div class="grid grid3 section-gap">${stat('Ayat target tuntas',r.doneTarget+' / '+r.totalTarget)}${stat('Hafalan tercatat',r.memorizedVerses,'Ayat unik lintas surah')}${stat('Murojaah terverifikasi',r.murojaahSessions,r.murojaahDays+' hari berbeda')}</div><div class="section-gap">${tahProgressBar(pct)}</div><p class="hint">Capaian dari hafalan awal terverifikasi dan setoran yang berstatus Tuntas; pengulangan tidak dihitung dua kali.</p></div>
+ <div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Target kelas & capaian</div><div class="stack">${r.targets.map(t=>`<div class="item"><div class="row-between"><b>${E(t.surahName)} ${t.startAyah}–${t.endAyah}</b><span class="pill">${t.done}/${t.count} ayat</span></div>${tahProgressBar(t.count?100*t.done/t.count:0)}</div>`).join('')||empty('Target belum ditetapkan.')}</div></div>
+ <div class="card"><div class="panel-title">Hafalan yang telah dimiliki</div><p class="hint">Daftar ini menampilkan ayat-ayat unik yang telah dinyatakan tuntas, termasuk hafalan sebelum target kelas.</p><div class="stack section-gap">${r.hafalan.map(x=>`<div class="item"><div class="row-between"><b>${E(x.surahName)}</b><span class="pill green">${x.count} ayat</span></div><div class="small muted">Ayat: ${E(x.ranges)}</div></div>`).join('')||empty('Belum ada hafalan terverifikasi yang dicatat.')}</div></div></div>
+ <div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Riwayat setoran & murojaah</div><div class="stack">${tahEntryList(r,r.editable)}</div></div><div class="card"><div class="panel-title">Apresiasi & catatan prestasi</div><div class="stack">${r.awards.map(x=>`<div class="item"><span class="pill green">Apresiasi</span><h3 class="section-gap">${E(x.title)}</h3><p class="small">${E(x.note)}</p><div class="small muted">${E(x.period||x.date)}</div>${r.editable?`<button type="button" class="btn btn-sm btn-danger section-gap" data-action="tah-archive" data-kind="award" data-id="${E(x.id)}">Arsipkan apresiasi</button>`:''}</div>`).join('')||empty('Belum ada apresiasi tercatat.')}</div></div></div>`;
+}
+const TAH_TEACHER_TABS=[
+ ['overview','Ringkasan','◫'],['entry','Setoran & Murojaah','▤'],
+ ['students','Hafalan Siswa','♧'],['targets','Target & Guru','◎'],
+ ['awards','Apresiasi','☆'],['reports','Cetak Laporan','▣']
+];
+const TAH_PARENT_TABS=[['overview','Ringkasan','◫'],['students','Hafalan','♧'],['entries','Setoran & Apresiasi','☆']];
+function tahTabs(parent=false){
+ const tabs=parent?TAH_PARENT_TABS:TAH_TEACHER_TABS;
+ return `<nav id="tah-tabbar" class="tah-tabs" role="tablist" aria-label="Submenu Tahfidz">${tabs.map(([id,label,icon])=>`<button type="button" class="tah-tab" role="tab" id="tah-tab-${id}" aria-controls="tah-pane-${id}" aria-selected="${TAH.tab===id?'true':'false'}" tabindex="${TAH.tab===id?'0':'-1'}" data-action="tah-tab" data-tab="${id}"><span class="tah-tab-icon" aria-hidden="true">${icon}</span>${E(label)}</button>`).join('')}</nav>`;
+}
+function tahPane(id,body){return `<section class="tah-pane" role="tabpanel" id="tah-pane-${id}" aria-labelledby="tah-tab-${id}" ${TAH.tab===id?'':'hidden'}>${body}</section>`;}
+function tahSwitchTab(tab,options={}){
+ const root=$('#tah-main');if(!root)return;
+ const button=root.querySelector(`#tah-tab-${tab}`);
+ if(!button)return;
+ TAH.tab=tab;
+ root.querySelectorAll('.tah-tab').forEach(b=>{const active=b.dataset.tab===tab;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;});
+ root.querySelectorAll('.tah-pane').forEach(p=>{p.hidden=p.id!==`tah-pane-${tab}`;});
+ if(options.focus)button.focus({preventScroll:true});
+ if(options.scroll)document.querySelector('#tah-tabbar')?.scrollIntoView({behavior:'smooth',block:'start'});
+ if(!role('ORANG_TUA')&&['entry','students'].includes(tab)){
+  if(!TAH.detail||TAH.detail?.student?.id!==TAH.studentId)tahLoadStudent(false);
+  else if(tab==='entry')tahSuggestNext(TAH.detail);
+ }
+}
+function tahParentMarkup(detail){
+ const wrap=document.createElement('div');wrap.innerHTML=tahDetailMarkup(detail);
+ const pieces=[...wrap.children];
+ if(!['overview','students','entries'].includes(TAH.tab))TAH.tab='overview';
+ const parts=[pieces[0]?.outerHTML||'',pieces[1]?.outerHTML||'',pieces[2]?.outerHTML||''];
+ return tahTabs(true)+tahPane('overview',parts[0])+tahPane('students',parts[1])+tahPane('entries',parts[2]);
+}
+function renderTahfidz(){
+ const parent=role('ORANG_TUA');
+ const cache=TAH.savedDom;
+ if(cache&&cache.context===tahCacheContext()&&TAH.viewClass===S.classId&&(parent?TAH.detail:TAH.klass&&TAH.settings)){
+   const content=$('#content');content.replaceChildren(cache.fragment);TAH.savedDom=null;
+   // Tidak ada operasi network; kembali ke tab dan formulir persis seperti sebelum berpindah.
+   return;
+ }
+ if(cache&&cache.context!==tahCacheContext())clearTahDom();
+ if(TAH.viewClass!==S.classId){TAH.viewClass=S.classId;TAH.tab='overview';TAH.detail=null;TAH.klass=null;TAH.settings=null;TAH.studentId='';}
+ TAH.studentId=parent?S.childId:TAH.studentId&&S.home.students?.some(x=>x.id===TAH.studentId)?TAH.studentId:S.home.students?.[0]?.id||'';
+ let html=head('Tahfidz & Murojaah',parent?'Pantau hafalan yang sudah dikuasai, setoran, penguatan, serta apresiasi guru.':'Target kelas, setoran individual, penilaian murojaah, dan apresiasi yang terukur.');
+ if(!parent)html+=`<div class="notice">Kelola kegiatan melalui tab di bawah ini. Guru Kelas dan Guru Tahfidz yang ditugaskan dapat sama-sama mencatat setoran. Pilih tab tanpa memuat ulang seluruh data.</div>`;
+ html+=`<div id="tah-main">${tahTabs(parent)}${(parent?TAH_PARENT_TABS:TAH_TEACHER_TABS).map(x=>tahPane(x[0],loader())).join('')}</div>`;setContent(html);
+ // Setelah halaman dibangun ulang (mis. kelas diganti), data yang masih valid bisa langsung ditampilkan.
+ if(!parent&&TAH.settings&&TAH.klass&&TAH.viewClass===S.classId){drawTahTeacher();return;}
+ if(parent&&TAH.detail&&TAH.viewClass===S.classId){const el=$('#tah-main');if(el)el.innerHTML=tahParentMarkup(TAH.detail);return;}
+ loadTahfidz();
+}
+async function loadTahfidz(refresh=false){
+ const parent=role('ORANG_TUA'),classId=S.classId,studentId=parent?S.childId:TAH.studentId,req=++TAH.request;
+ try{
+  if(parent){const detail=await cachedCall('tahStudentReport',{classId,studentId},refresh?0:25000);if(req!==TAH.request||S.view!=='tahfidz')return;TAH.detail=detail;$('#tah-main').innerHTML=tahParentMarkup(detail);return;}
+  const [settings,klass]=await Promise.all([cachedCall('tahSettings',{classId},refresh?0:30000),cachedCall('tahClassReport',{classId,period:TAH.period||(S.home?.serverDate||'').slice(0,7)},refresh?0:20000)]);
+  if(req!==TAH.request||S.view!=='tahfidz')return;
+  TAH.settings=settings;TAH.klass=klass;drawTahTeacher();
+  if(['entry','students'].includes(TAH.tab))await tahLoadStudent(false);
+ }catch(err){const h=$('#tah-main');if(h)h.innerHTML=`<div class="notice warning">Tidak dapat memuat Tahfidz: ${E(err.message)}. Pastikan upgradeDatabaseV36() telah dijalankan.</div>`;}
+}
+function tahPrintPanel(){
+ const students=S.home?.students||[];
+ return `<div class="grid grid2"><div class="card"><div class="panel-title">Cetak laporan Tahfidz</div><p class="hint">Pratinjau dibuat dengan format rapi yang sama dengan modul Cetak & Laporan. Pilih laporan siswa atau rekap kelas, lalu simpan sebagai PDF.</p><form id="print-form" class="section-gap"><div class="field"><label class="label">Jenis laporan</label><select id="print-type" name="type"><option value="tahfidzStudent">Laporan Tahfidz Siswa</option><option value="tahfidzClass">Rekap Tahfidz Kelas</option></select></div><div class="field"><label class="label">Siswa untuk laporan individual</label><select name="studentId" id="tah-print-student">${fillOptions(students,TAH.studentId||students[0]?.id||'','Pilih siswa')}</select></div><div class="field" id="print-period-field" style="display:none"><label class="label">Bulan rekap murojaah</label><input type="month" name="period" value="${E(TAH.period||(S.home?.serverDate||'').slice(0,7))}"></div><div class="actions"><button type="submit" class="btn btn-primary">Buat pratinjau</button><button type="button" class="btn btn-outline" data-action="nav" data-view="printing">Menu cetak lainnya</button></div></form></div><div class="card"><div class="panel-title">Dokumen tersedia</div><div class="stack"><div class="item"><b>Laporan Tahfidz Individu</b><p class="hint">Target, capaian hafalan, setoran, murojaah, dan apresiasi.</p></div><div class="item"><b>Rekap Tahfidz Kelas</b><p class="hint">Ringkasan progres tiap siswa dan aktivitas murojaah menurut periode.</p></div></div></div></div><div id="print-preview" class="card section-gap">${empty('Pratinjau laporan muncul di sini setelah memilih Buat pratinjau.')}</div>`;
+}
+function drawTahTeacher(){
+ const k=TAH.klass,rows=k.students||[];
+ if(!TAH_TEACHER_TABS.some(x=>x[0]===TAH.tab))TAH.tab='overview';
+ const period=TAH.period||(S.home?.serverDate||'').slice(0,7);
+ const summary=`<div class="tah-intro-card"><div><b>Pantauan Tahfidz Kelas</b><p class="hint">Ringkasan capaian target kelas dan aktivitas murojaah bulan ${E(period)}.</p></div><button class="btn btn-sm btn-outline" data-action="tah-refresh">↻ Perbarui data</button></div>
+ <div class="grid grid3 section-gap">${stat('Siswa dalam kelas',rows.length)}${stat('Target hafalan aktif',(TAH.settings?.targets||[]).length)}${stat('Sesi murojaah tercatat',rows.reduce((s,x)=>s+x.sessions,0))}</div>
+ <div class="card section-gap"><div class="panel-title">Perkembangan seluruh siswa</div><div class="table-wrap"><table><thead><tr><th>Nama siswa</th><th>Capaian target</th><th>Murojaah</th><th>Hari aktif</th><th>Tindakan</th></tr></thead><tbody>${rows.map(x=>`<tr><td><b>${E(x.name)}</b><div class="small muted">${E(x.nis)}</div></td><td>${x.done} / ${x.target} ayat ${tahProgressBar(x.percentage)}</td><td>${x.sessions} sesi</td><td>${x.days} hari</td><td><div class="actions" style="margin:0"><button type="button" class="btn btn-sm btn-outline" data-action="tah-pick-student" data-id="${E(x.studentId)}">Lihat progres</button>${!role('KEPALA_SEKOLAH')?`<button type="button" class="btn btn-sm" data-action="tah-record-student" data-id="${E(x.studentId)}">+ Setoran</button>`:''}</div></td></tr>`).join('')||'<tr><td colspan="5">Belum ada siswa di kelas ini.</td></tr>'}</tbody></table></div></div>`;
+ const readonlyTargets=`<div class="card"><div class="panel-title">Target hafalan kelas</div><div class="stack">${(TAH.settings?.targets||[]).map(t=>`<div class="item"><b>${E(t.surahName)} · ${E(t.startAyah)}–${E(t.endAyah)}</b><div class="small muted">Semester ${E(t.semester)}</div></div>`).join('')||empty('Belum ada target kelas.')}</div></div>`;
+ const canEdit=!role('KEPALA_SEKOLAH');
+ const targetPanel=canEdit?`<div class="grid grid2">${tahTargetForm()}${tahTeacherForm()}</div>`:readonlyTargets;
+ const selectedStudent=`<div class="tah-intro-card"><div><b>Riwayat dan hafalan siswa</b><p class="hint">Pilih siswa untuk melihat ayat yang telah tuntas, riwayat setoran, dan apresiasinya.</p></div><div class="tah-compact-select"><label class="label" for="tah-student-select">Pilih siswa</label><select id="tah-student-select">${tahStudentOptions(TAH.studentId)}</select></div></div>`;
+ const awardsIntro=`<div class="tah-intro-card"><div><b>Apresiasi & ketekunan</b><p class="hint">Jumlah sesi hanya rekomendasi. Apresiasi tetap mempertimbangkan kualitas bacaan, perkembangan, dan usaha.</p></div><div class="tah-compact-select"><label class="label" for="tah-period">Periode bulan</label><input type="month" id="tah-period" value="${E(period)}"></div></div>`;
+ const suggestions=k.appreciationSuggestions.length?`<div class="notice section-gap"><b>Ide apresiasi</b><div class="small">${k.appreciationSuggestions.map(x=>E(x.name)+' ('+x.sessions+' sesi)').join(' · ')}</div><p class="hint">Informasi hanya untuk guru, bukan peringkat siswa yang dipublikasikan.</p></div>`:'';
+ const panes=[
+ tahPane('overview',summary),
+ tahPane('entry',canEdit?tahEntryForm():`<div class="card">${empty('Akses monitoring: pencatatan setoran hanya untuk Guru Kelas atau Guru Tahfidz.')}</div>`),
+ tahPane('students',selectedStudent+(canEdit?`<div class="section-gap grid grid2">${tahBaselineForm()}<div class="card"><div class="panel-title">Akses cepat</div><p class="hint">Catat hafalan awal apabila siswa sudah memiliki hafalan terverifikasi dari kelas sebelumnya.</p><button type="button" class="btn btn-primary section-gap" data-action="tah-tab" data-tab="entry">+ Catat setoran baru</button></div></div>`:'')+`<div id="tah-student-detail" class="section-gap">${empty('Pilih siswa untuk memuat riwayat hafalannya.')}</div>`),
+ tahPane('targets',targetPanel),
+ tahPane('awards',awardsIntro+suggestions+(canEdit?`<div class="section-gap">${tahAwardForm()}</div>`:'')),
+ tahPane('reports',tahPrintPanel())
+ ];
+ const el=$('#tah-main');if(el)el.innerHTML=tahTabs(false)+panes.join('');
+}
+async function tahLoadStudent(refresh=false){
+ if(!TAH.studentId){const h=$('#tah-student-detail');if(h)h.innerHTML=empty('Belum ada siswa terdaftar.');return;}
+ const studentId=TAH.studentId,classId=S.classId,req=++TAH.request;
+ const h=$('#tah-student-detail');if(h)h.innerHTML=loader();
+ try{const r=await cachedCall('tahStudentReport',{classId,studentId},refresh?0:20000);if(req!==TAH.request||S.view!=='tahfidz')return;TAH.detail=r;if(h)h.innerHTML=tahDetailMarkup(r);tahSuggestNext(r);}
+ catch(e){if(h)h.innerHTML=`<div class="notice warning">${E(e.message)}</div>`;}
+}
+function tahInvalidate(){forgetMenuCache('tahSettings','tahClassReport','tahStudentReport','printData');TAH.klass=null;TAH.detail=null;TAH.savedDom=null;}
+async function tahSave(action,data){
+ try{busy(true);processMessage('Menyimpan catatan Tahfidz…');const r=await call(action,{...data,classId:S.classId});if(!r?.ok)throw new Error('Server tidak mengonfirmasi penyimpanan.');tahInvalidate();toast('Catatan Tahfidz berhasil disimpan.');await loadTahfidz(true);return r;}
+ catch(e){toast('Tidak tersimpan: '+e.message,true);return null;}finally{busy(false);}
+}
+function tahEditEntry(id){const entry=TAH.detail?.entries?.find(x=>x.id===id);if(!entry)return;tahSwitchTab('entry');const form=$('#tah-entry-form');if(!form)return;
+ ['id','date','studentId','kind','surahNo','startAyah','endAyah','status','fluency','tajwid','makhraj','note'].forEach(k=>{const el=form.elements.namedItem(k);if(el)el.value=entry[k]??'';});form.elements.namedItem('published').checked=entry.published==='YES';form.scrollIntoView({behavior:'smooth',block:'start'});
+}
+document.addEventListener('submit',async ev=>{
+ const f=ev.target,id=f?.getAttribute?.('id');if(!id||!id.startsWith('tah-'))return;
+ ev.preventDefault();ev.stopImmediatePropagation();
+ if(S.busy){toast('Tunggu proses yang sedang berjalan selesai.');return;}
+ const data=fd(f);
+ if(data.surahNo){const surah=TAH.settings?.surahs?.find(x=>String(x.number)===String(data.surahNo));if(surah&&(Number(data.startAyah)<1||Number(data.endAyah)<Number(data.startAyah)||Number(data.endAyah)>surah.verses)){toast('Rentang ayat tidak sesuai jumlah ayat surah.',true);return;}}
+ if(['tah-target-form','tah-entry-form','tah-baseline-form','tah-award-form'].includes(id)&&data.studentId)TAH.studentId=data.studentId;
+ const actions={'tah-target-form':'tahSaveTarget','tah-entry-form':'tahSaveEntry','tah-baseline-form':'tahSaveBaseline','tah-award-form':'tahSaveAward'};
+ if(actions[id])await tahSave(actions[id],{...data,published:!!f.elements.namedItem('published')?.checked});
+},true);
+document.addEventListener('click',async ev=>{
+ const b=ev.target.closest('[data-action]'),action=b?.dataset?.action;if(!action||!action.startsWith('tah-'))return;
+ ev.preventDefault();ev.stopImmediatePropagation();
+ if(action==='tah-tab'){tahSwitchTab(b.dataset.tab,{focus:true,scroll:false});return;}
+ if(action==='tah-record-student'){
+  TAH.studentId=b.dataset.id;
+  ['tah-entry-form','tah-baseline-form','tah-award-form','tah-student-select','tah-print-student'].forEach(id=>{const f=$('#'+id),el=f?.tagName==='SELECT'?f:f?.elements?.namedItem('studentId');if(el)el.value=TAH.studentId;});
+  tahSwitchTab('entry',{scroll:true});return;
+ }
+ if(action==='tah-refresh')return loadTahfidz(true);
+ if(action==='tah-confirm-home'){if(!await sipConfirm('Konfirmasi bahwa hafalan pada arahan guru sudah didampingi di rumah?',{title:'Konfirmasi murojaah di rumah'}))return;const id=b.dataset.id;try{busy(true);processMessage('Mencatat pendampingan rumah…');await call('tahConfirmHome',{classId:S.classId,studentId:S.childId,entryId:id});tahInvalidate();toast('Pendampingan di rumah berhasil dikonfirmasi.');await loadTahfidz(true);}catch(err){toast(err.message,true);}finally{busy(false);}return;} 
+ if(action==='tah-pick-student'){TAH.studentId=b.dataset.id;['tah-entry-form','tah-baseline-form','tah-award-form'].forEach(id=>{const f=$('#'+id);if(f?.elements.namedItem('studentId'))f.elements.namedItem('studentId').value=TAH.studentId;});const s=$('#tah-student-select');if(s)s.value=TAH.studentId;tahSwitchTab('students',{scroll:true});return tahLoadStudent(false);}
+ if(action==='tah-edit-entry')return tahEditEntry(b.dataset.id);
+ if(action==='tah-edit-target'){tahSwitchTab('targets');const t=TAH.settings?.targets?.find(x=>x.id===b.dataset.id),f=$('#tah-target-form');if(!t||!f)return;['id','surahNo','startAyah','endAyah','dueDate','semester','notes'].forEach(k=>{const el=f.elements.namedItem(k);if(el)el.value=t[k]??'';});f.scrollIntoView({behavior:'smooth'});return;}
+ if(action==='tah-teacher'){const on=b.dataset.active==='true';if(!await sipConfirm((on?'Tugaskan':'Cabut penugasan')+' Guru Tahfidz ini untuk kelas aktif?',{title:'Pemetaan Guru Tahfidz'}))return;return tahSave('tahAssign',{teacherId:b.dataset.id,active:on});}
+ if(action==='tah-archive'){if(!await sipConfirm('Data akan disembunyikan dari daftar aktif dan laporan; riwayat audit tetap tersimpan.',{danger:true,title:'Arsipkan catatan Tahfidz',confirmText:'Ya, arsipkan'}))return;return tahSave('tahArchive',{id:b.dataset.id,kind:b.dataset.kind});}
+},true);
+
+document.addEventListener('change',ev=>{
+ if(ev.target?.id==='tah-period'){TAH.period=ev.target.value;loadTahfidz(true);return;}
+ if(ev.target?.id==='tah-student-select'){
+   TAH.studentId=ev.target.value;
+   ['tah-entry-form','tah-baseline-form','tah-award-form'].forEach(id=>{const f=$('#'+id);if(f?.elements.namedItem('studentId'))f.elements.namedItem('studentId').value=TAH.studentId;});
+   tahLoadStudent(false);return;
+ }
+ if(ev.target?.matches('#tah-entry-form [name="studentId"],#tah-baseline-form [name="studentId"],#tah-award-form [name="studentId"]')){
+   TAH.studentId=ev.target.value;
+   const pick=$('#tah-student-select');if(pick)pick.value=TAH.studentId;
+   ['tah-entry-form','tah-baseline-form','tah-award-form'].forEach(id=>{const f=$('#'+id);if(f?.elements.namedItem('studentId'))f.elements.namedItem('studentId').value=TAH.studentId;});
+   tahLoadStudent(false);
+ }
+},true);
+document.addEventListener('keydown',ev=>{
+ const b=ev.target?.closest?.('.tah-tab');if(!b||!['ArrowRight','ArrowLeft','Home','End'].includes(ev.key))return;
+ const list=[...b.parentNode.querySelectorAll('.tah-tab')],idx=list.indexOf(b);
+ const next=ev.key==='Home'?list[0]:ev.key==='End'?list[list.length-1]:list[(idx+(ev.key==='ArrowRight'?1:-1)+list.length)%list.length];
+ if(next){ev.preventDefault();tahSwitchTab(next.dataset.tab,{focus:true});}
+});
+
+document.addEventListener('change',ev=>{if(ev.target?.id==='print-type'){const field=document.getElementById('print-period-field');if(field)field.style.display=ev.target.value==='tahfidzClass'?'block':'none';}},true);

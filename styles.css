@@ -1,0 +1,135 @@
+
+    :root{--bg:#f5f8f7;--surface:#fff;--ink:#19312e;--muted:#74827e;--green:#176c59;--green2:#0d4b3e;--pale:#e8f4ee;--line:#e4ebe7;--gold:#b6812c;--red:#b7494b;--shadow:0 10px 34px rgba(25,56,49,.07)}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.52 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}button,input,textarea,select{font:inherit}button{cursor:pointer}a{color:var(--green)}h1,h2,h3,p{margin:0}h1{font-size:26px;line-height:1.24}h2{font-size:19px}h3{font-size:15px}.muted{color:var(--muted)}.small{font-size:12px}.label{font-size:12px;font-weight:750;color:#476158;margin-bottom:6px;display:block}
+    .login-wrap{min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 5% 5%,#e1f5e8 0,transparent 40%),radial-gradient(circle at 95% 95%,#d7efea 0,transparent 35%),#f7faf8}.login-card{width:min(100%,440px);background:white;border:1px solid var(--line);border-radius:22px;padding:32px;box-shadow:var(--shadow)}.logo{display:inline-grid;place-items:center;width:44px;height:44px;background:var(--green);color:white;font-weight:900;border-radius:13px;font-size:21px;letter-spacing:-2px}.logo-name{font-size:21px;letter-spacing:-.6px;font-weight:850}.brand{display:flex;align-items:center;gap:12px}.login-card h1{margin-top:35px;font-size:25px}.login-card p{margin:9px 0 22px}.login-foot{padding-top:15px;border-top:1px solid var(--line);margin-top:20px;font-size:12px;color:var(--muted)}
+    .field{margin-bottom:14px}input:not([type=checkbox]),textarea,select{width:100%;min-height:42px;border:1px solid #d9e5df;border-radius:10px;background:#fff;color:var(--ink);padding:10px 12px;outline:none}textarea{resize:vertical;min-height:94px}input:focus,textarea:focus,select:focus{border-color:#64a792;box-shadow:0 0 0 3px #e6f4ed}.btn{border:0;border-radius:10px;min-height:40px;padding:10px 15px;background:#e9f1ed;color:var(--green2);font-weight:750;display:inline-flex;align-items:center;justify-content:center;gap:7px;text-decoration:none}.btn:hover{filter:brightness(.97)}.btn:disabled{opacity:.55;cursor:wait}.btn-primary{background:var(--green);color:#fff}.btn-outline{background:white;border:1px solid #cddfd5}.btn-danger{background:#fae6e6;color:#a33333}.btn-sm{font-size:12px;padding:6px 10px;min-height:31px}.btn-full{width:100%}.layout{min-height:100vh;display:flex}.sidebar{width:246px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--line);padding:26px 17px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}.nav{margin-top:33px;display:grid;gap:5px;overflow-y:auto;align-content:start}.nav-btn{width:100%;text-align:left;border:0;background:transparent;border-radius:11px;padding:12px 13px;color:#536760;font-weight:650;display:flex;align-items:center;gap:12px}.nav-btn.active{color:var(--green2);background:var(--pale)}.nav-btn:hover{background:#f0f5f2}.nav-btn .sym{font-size:17px;width:23px;text-align:center}.side-bottom{margin-top:auto;border-top:1px solid var(--line);padding-top:16px}.main{flex:1;min-width:0;max-width:1600px}.topbar{height:84px;padding:18px 32px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.85);display:flex;align-items:center;justify-content:space-between;gap:18px}.topbar small{display:block;font-size:12px;color:var(--muted)}.avatar{width:38px;height:38px;border-radius:50%;background:var(--pale);display:grid;place-items:center;color:var(--green);font-size:17px;font-weight:800}.topright{display:flex;align-items:center;gap:12px}.main-content{padding:30px 32px 75px;max-width:1220px;margin:auto}.page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:23px}.page-header p{color:var(--muted);margin-top:6px}.grid{display:grid;gap:16px}.grid2{grid-template-columns:repeat(2,minmax(0,1fr))}.grid3{grid-template-columns:repeat(3,minmax(0,1fr))}.grid4{grid-template-columns:repeat(4,minmax(0,1fr))}.card{background:var(--surface);border:1px solid var(--line);border-radius:15px;padding:20px;box-shadow:0 4px 16px rgba(22,56,46,.025)}.stat{padding:21px}.stat .value{font-size:29px;font-weight:850;letter-spacing:-1px}.stat .meta{font-size:12px;color:var(--muted)}.panel-title{font-size:15px;font-weight:800;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}.pill{border-radius:30px;padding:4px 9px;font-size:11px;font-weight:750;background:#eef2f1;color:#61746f;display:inline-block}.pill.green{background:var(--pale);color:var(--green)}.pill.yellow{background:#fff3df;color:#996622}.pill.red{background:#fce9e8;color:#aa4242}.stack{display:grid;gap:11px}.item{border:1px solid var(--line);border-radius:11px;padding:14px}.item h3{margin-bottom:5px}.item p{white-space:pre-wrap}.item-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.row{display:flex;gap:12px;align-items:center}.row-between{display:flex;gap:10px;align-items:center;justify-content:space-between}.wrap{flex-wrap:wrap}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.hint{color:var(--muted);font-size:12px;margin-top:7px}.empty{padding:30px 16px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px}.section-gap{margin-top:19px}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}table{border-collapse:collapse;width:100%;min-width:480px;background:#fff}th,td{text-align:left;padding:12px 13px;border-bottom:1px solid var(--line)}th{background:#f5f8f6;font-size:12px;color:#687b72}tr:last-child td{border-bottom:0}td{font-size:13px}.mini-input{max-width:150px}.mini-input select{min-height:35px;padding:5px 8px}.notice{background:#eff8f1;border:1px solid #d8ecdf;padding:14px 15px;border-radius:12px;color:#416758;font-size:13px}.divider{height:1px;background:var(--line);margin:16px 0}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}.form-grid .wide{grid-column:1/-1}.mobilebar,.mobile-more{display:none}.mobile-more{position:fixed;bottom:75px;left:12px;right:12px;z-index:16;background:#fff;border:1px solid var(--line);border-radius:15px;box-shadow:var(--shadow);padding:11px;max-height:60vh;overflow:auto}.mobile-more.open{display:block}.mobile-more .nav-btn{display:flex}.toast{position:fixed;right:23px;bottom:22px;z-index:1000;max-width:min(440px,90vw);padding:13px 16px;background:#153c31;color:white;border-radius:12px;box-shadow:var(--shadow);display:none}.toast.error{background:#9b393e}.loader{display:grid;place-items:center;padding:50px;color:var(--muted)}.dots{width:24px;height:24px;border:3px solid #cde8d7;border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:8px}@keyframes spin{to{transform:rotate(360deg)}}.credential{background:#edf6ed;border:1px dashed #9dcbad;padding:15px;border-radius:12px;margin:16px 0}.credential code{font-size:15px;user-select:all}.warning{background:#fff8e8;color:#795d22;border-color:#f0dfb2}.select-small{max-width:190px}.w100{width:100%}.badge-round{height:39px;width:39px;border-radius:13px;display:grid;place-items:center;background:var(--pale);font-size:20px}.child-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.child-card{background:white;border:1px solid var(--line);border-radius:14px;padding:15px;text-align:left;color:var(--ink)}.child-card.selected{border-color:var(--green);box-shadow:0 0 0 2px #d5ebdf}.child-card:hover{border-color:#84baa4}.child-name{font-weight:800;font-size:15px}.nowrap{white-space:nowrap}.role{font-size:12px;color:var(--muted);letter-spacing:.1px}
+    @media(max-width:1000px){.sidebar{width:208px}.main-content{padding:23px}.topbar{padding:17px 23px}.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:760px){.layout{display:block}.sidebar{display:none}.mobilebar{position:fixed;bottom:0;left:0;right:0;z-index:15;background:white;border-top:1px solid var(--line);display:flex;justify-content:space-around;gap:1px;padding:7px 4px max(7px,env(safe-area-inset-bottom))}.mobilebar button{flex:1;background:white;border:0;font-size:11px;color:#708079;padding:5px 0;display:grid;place-items:center;gap:2px}.mobilebar button.active{color:var(--green);font-weight:800}.mobilebar button span{font-size:19px}.main-content{padding:20px 15px 96px}.topbar{height:68px;padding:12px 15px}.topbar .topright .name{display:none}.grid2,.grid3{grid-template-columns:1fr}.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}.page-header{align-items:stretch;flex-direction:column}.form-grid{grid-template-columns:1fr}.login-card{padding:25px}.card{padding:16px}.topright{gap:6px}}
+    .progress-meter{height:9px;border-radius:99px;background:#e9efeb;overflow:hidden;margin-top:7px}
+    .progress-meter>span{display:block;height:100%;background:#21816b;border-radius:99px}
+    .progress-score{font-weight:850;font-size:22px;color:var(--green2)}
+    .progress-subject{padding:13px 0;border-bottom:1px solid var(--line)}
+    .progress-subject:last-child{border-bottom:0}
+    .save-status{font-size:12px;color:var(--muted);margin-top:8px}
+
+/* SIPANDAI 3.4: absensi cepat pada ponsel */
+.att-list{display:grid;gap:8px}.att-student{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;border:1px solid #e1eae5;border-radius:15px;padding:11px 14px;background:linear-gradient(110deg,#f6faf8,#eef7f9);min-width:0}.att-student:nth-child(4n+2){background:linear-gradient(110deg,#f3f9fb,#f7f8ff)}.att-student:nth-child(4n+3){background:linear-gradient(110deg,#f7f8ff,#f9f3f8)}.att-student:nth-child(4n){background:linear-gradient(110deg,#f9f4f6,#f9f8fb)}.att-person{display:flex;gap:10px;align-items:center;min-width:0}.att-person b{font-size:13px;display:block;overflow-wrap:anywhere}.att-number{border-radius:50%;background:#e6eafa;color:#6576bd;display:grid;place-items:center;width:28px;height:28px;flex-shrink:0;font-size:12px;font-weight:800}.att-nis{display:block;color:#80918b;font-size:10px;margin-top:2px}.att-controls{display:flex;align-items:center;gap:6px;min-width:0}.att-choice{display:flex;gap:3px;padding:4px;background:#dce4e7;border-radius:12px}.att-choice-btn{border:0;background:transparent;color:#55646a;padding:9px 10px;min-width:42px;border-radius:8px;font-size:11px;transition:background .12s,transform .12s}.att-choice-btn.selected{font-weight:800;color:white;box-shadow:0 2px 5px #3442}.att-choice-btn.att-H.selected{background:#1cbb69}.att-choice-btn.att-S.selected{background:#e6af13}.att-choice-btn.att-I.selected{background:#347bbd}.att-choice-btn.att-A.selected{background:#c95860}.att-choice-btn:disabled{cursor:default}.att-note-toggle{border:0;border-radius:10px;background:#dce4e7;color:#455b55;height:36px;width:36px}.att-note-toggle:disabled{opacity:.5}.att-note-container{grid-column:1/-1}.att-note-container input{min-height:36px!important}.att-hidden-select{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;padding:0!important;border:0!important}.sip-process-overlay{position:fixed;inset:0;background:rgba(12,37,29,.43);backdrop-filter:blur(3px);z-index:3000;display:grid;place-items:center;padding:20px}.sip-process-panel{width:min(100%,340px);padding:27px 24px;background:white;border-radius:20px;text-align:center;box-shadow:0 20px 75px #183a3436;display:grid;justify-items:center;gap:10px}.sip-process-panel strong{font-size:16px}.sip-process-panel p{color:#687e75;font-size:12px}.sip-process-panel small{color:#87958e;font-size:11px}.sip-process-ring{height:64px;width:64px;border-radius:50%;border:5px solid #d4ede0;border-top-color:#157059;animation:spin .85s linear infinite;display:grid;place-items:center}.sip-process-ring span{color:#128061;font-size:20px;animation:spin .85s linear infinite reverse}.sip-process-track{width:100%;height:5px;border-radius:30px;background:#eaf2ed;overflow:hidden;margin:7px 0}.sip-process-track span{display:block;width:33%;height:100%;border-radius:30px;background:#1c9b70;animation:siptrack 1.45s ease-in-out infinite alternate}@keyframes siptrack{0%{transform:translateX(0)}100%{transform:translateX(200%)}}.sip-data-loader{display:grid;gap:9px;justify-items:center}.sip-loader-art{display:flex;gap:6px;align-items:end;height:29px}.sip-loader-art span{width:7px;height:12px;background:#21846b;border-radius:7px;animation:sipwave .75s ease-in-out infinite alternate}.sip-loader-art span:nth-child(2){animation-delay:.15s}.sip-loader-art span:nth-child(3){animation-delay:.3s}@keyframes sipwave{to{height:29px;opacity:.55}}@media(max-width:760px){.att-student{grid-template-columns:1fr;gap:8px;padding:10px 11px}.att-controls{padding-left:37px;justify-content:space-between}.att-choice{flex:1;justify-content:space-around}.att-choice-btn{padding:8px 7px;flex:1}.att-note-toggle{flex-shrink:0}.att-nis{display:none}}@media(max-width:365px){.att-choice-btn{font-size:10px;padding:8px 4px}.att-controls{padding-left:0}}
+
+  /* SIPANDAI v3.6: tata letak laporan modern, konsisten warna aplikasi. */
+.sip-print-preview{background:#eef4f0;border-radius:12px;padding:14px;max-height:680px;}
+.sip-doc{font-family:system-ui,-apple-system,'Segoe UI',Arial,sans-serif;background:white;color:#19312e;padding:26px;max-width:850px;margin:0 auto;border-radius:11px;font-size:12px;box-shadow:0 4px 12px rgba(23,108,89,.05)}
+.sip-doc-head{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #176c59;padding:0 0 13px;margin:0 0 20px;gap:10px}
+.sip-doc-brand{display:flex;align-items:center;gap:10px}.sip-doc-brand b{display:block;font-size:17px;letter-spacing:-.4px}.sip-doc-brand small{display:block;color:#697f74;font-size:9px}.sip-doc-symbol{width:34px;height:34px;background:#176c59;color:white;display:grid;place-items:center;border-radius:9px;font-weight:850;font-size:20px}
+.sip-doc-type{font-size:9px;letter-spacing:1px;color:#52736a;font-weight:800}
+.sip-doc-title{margin-bottom:16px}.sip-doc-eyebrow{color:#176c59;font-size:10px;font-weight:750;letter-spacing:.4px;text-transform:uppercase}.sip-doc-title h1{font-size:23px;margin:5px 0 4px}.sip-doc-title p{color:#5c736a;font-size:12px}
+.sip-doc-meta{display:flex;flex-wrap:wrap;gap:7px;margin:16px 0}.sip-doc-meta>div{padding:9px 12px;background:#f0f6f3;border:1px solid #e1eee6;border-radius:8px;flex:1;min-width:100px}.sip-doc-meta strong{display:block;font-size:13px}.sip-doc-meta small{color:#688176;font-size:10px}
+.sip-doc-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}.sip-doc-metric{border:1px solid #dfece5;background:#f7fbf8;padding:11px 12px;border-radius:9px}.sip-doc-metric>span{font-size:10px;color:#608174;display:block}.sip-doc-metric>b{display:block;font-size:20px;color:#176c59;letter-spacing:-.5px}.sip-doc-metric small{font-size:9px;color:#5c736a}
+.sip-doc-card{border:1px solid #dce9e1;border-radius:11px;padding:16px;margin:15px 0;break-inside:avoid-page;background:white}.sip-doc-card h2{font-size:13px;color:#164f3f;margin:0 0 12px;padding-bottom:9px;border-bottom:1px solid #e7eee9}
+.sip-doc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.sip-doc-row,.sip-doc-subject{background:#f9fbfa;border:1px solid #edf2ee;border-radius:8px;padding:9px 11px;break-inside:avoid-page}.sip-doc-row b{display:flex;justify-content:space-between;gap:10px}.sip-doc-row small,.sip-doc-subject small{display:block;color:#657b71;font-size:10px;margin-top:6px}.sip-doc-subject-head{display:flex;justify-content:space-between;gap:9px;align-items:start}.sip-doc-subject-head b:last-child{color:#176c59}.sip-doc-bar{height:7px;background:#e6efe9;border-radius:9px;overflow:hidden;margin:9px 0 2px}.sip-doc-bar>span{height:100%;display:block;background:#27856e;border-radius:9px}.sip-doc-small{font-size:10px;color:#5c736a;margin-top:6px}
+.sip-doc-notes>div{border-left:3px solid #26836d;padding:5px 0 5px 11px;margin:11px 0}.sip-doc-notes small,.sip-doc-highlight small{color:#7c8b82}.sip-doc-notes p{white-space:pre-wrap}.sip-doc-highlight{padding:9px 12px;margin:8px 0;background:#edf6ef;border-radius:8px}.sip-doc-highlight p{margin:4px 0}
+.sip-doc-disclaimer{font-size:10px;color:#72837d;font-style:italic;margin:14px 0}.sip-doc-footer{display:flex;justify-content:space-between;gap:16px;padding-top:10px;border-top:1px solid #ddebe2;font-size:9px;color:#7b8c82;margin-top:22px}.sip-doc-table-scroll{overflow:visible}.sip-doc .sip-print-table{width:100%;border-collapse:collapse;min-width:0;font-size:10px}.sip-doc .sip-print-table thead th{background:#e9f4ee;color:#164f3f;border:1px solid #c9ded2;font-size:9px}.sip-doc .sip-print-table td{border:1px solid #e0e9e3;vertical-align:top;font-size:10px;padding:7px;overflow-wrap:anywhere}.sip-doc .sip-print-table tr:nth-child(even){background:#f8fbf9}
+@media print{
+ @page{size:A4;margin:11mm}
+ html,body{background:white!important}
+ #sip-print-root{padding:0!important;background:#fff!important;color:#19312e!important}
+ #sip-print-root .sip-doc{padding:0!important;box-shadow:none!important;max-width:none!important;border-radius:0!important;margin:0!important;font-size:9pt!important}
+ #sip-print-root .sip-doc-title h1{font-size:19pt!important}
+ #sip-print-root .sip-doc-card{break-inside:auto;page-break-inside:auto}
+ #sip-print-root .sip-doc-metric,#sip-print-root .sip-doc-row,#sip-print-root .sip-doc-subject,#sip-print-root .sip-doc-highlight{break-inside:avoid;page-break-inside:avoid}
+ #sip-print-root .sip-doc-stats,#sip-print-root .sip-doc-grid{break-inside:avoid-page}
+ #sip-print-root .sip-print-table tr{break-inside:avoid;page-break-inside:avoid}
+ #sip-print-root .sip-print-table thead{display:table-header-group}
+ #sip-print-root .sip-doc-metric,#sip-print-root .sip-doc-head,#sip-print-root .sip-doc-title,#sip-print-root .sip-doc-meta,#sip-print-root .sip-doc-bar,#sip-print-root .sip-print-table th{print-color-adjust:exact;-webkit-print-color-adjust:exact}
+ #sip-print-root .sip-doc-footer{font-size:8pt}
+}
+
+
+/* SIPANDAI v3.8 — tab kontekstual pembelajaran dan laporan */
+.module-tabs{display:flex;align-items:center;gap:7px;overflow-x:auto;scrollbar-width:thin;padding:8px;margin:0 0 20px;background:#eaf3ee;border:1px solid var(--line);border-radius:15px;max-width:100%;}
+.module-tab{appearance:none;border:1px solid transparent;border-radius:10px;flex:0 0 auto;min-height:42px;background:transparent;color:#4f665c;padding:9px 14px;font-size:13px;font-weight:750;white-space:nowrap;display:flex;align-items:center;gap:8px;}
+.module-tab:hover{background:#dcece2;color:var(--green2)}
+.module-tab.active{background:var(--green);color:#fff;box-shadow:0 3px 12px rgba(23,108,89,.16)}
+.module-tab:focus-visible{outline:3px solid #7fc2a4;outline-offset:1px}
+.print-intro{border:1px solid #d8e7dd;border-radius:14px;background:linear-gradient(120deg,#e8f5ed,#f7faf7);padding:17px 20px;margin-bottom:14px}
+.print-intro b{font-size:16px}
+.print-main-grid{align-items:start}
+.print-help .item{background:#f9fbfa}
+@media(max-width:730px){.module-tabs{border-radius:11px;margin-bottom:16px}.module-tab{font-size:12px;min-height:42px;padding:9px 12px}.print-main-grid{grid-template-columns:1fr}.print-help{display:none}}
+
+
+
+/* SIPANDAI v3.9 — navigasi 5 item dan profil seluler */
+.mobile-more-title,.mobile-more-profile,.mobile-more-logout,.topbar-mobile-logout{display:none}
+@media(max-width:760px){
+  .mobilebar{gap:0;padding:5px 3px max(7px,env(safe-area-inset-bottom));box-shadow:0 -3px 15px rgba(23,77,57,.055)}
+  .mobilebar .mobile-nav-btn{font-size:10px;min-width:0;min-height:55px;padding:6px 1px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-radius:10px;color:#64756e}
+  .mobilebar .mobile-nav-btn .sym{font-size:20px;line-height:1.15}
+  .mobilebar .mobile-nav-btn .nav-label{display:block;font-size:10px;font-weight:650;line-height:1.15;white-space:nowrap;letter-spacing:-.3px}
+  .mobilebar .mobile-nav-btn.active{background:#e7f4ec;color:#116b56}
+  .mobile-more{bottom:calc(77px + env(safe-area-inset-bottom));padding:16px;max-height:min(70vh,680px);border-radius:20px;box-shadow:0 18px 44px rgba(18,58,43,.18)}
+  .mobile-more.open{display:block}
+  .mobile-more-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;font-size:16px}
+  .mobile-more-close{border:0;border-radius:9px;background:#edf5f0;color:var(--green);min-width:35px;min-height:35px}
+  .mobile-more nav{display:grid;gap:3px}
+  .mobile-more .nav-btn{width:100%;min-height:41px}
+  .mobile-more-profile{display:block;border-top:1px solid var(--line);margin-top:12px;padding-top:12px;overflow-wrap:anywhere}
+  .mobile-more-logout{display:flex;margin-top:12px;border-color:#e4c5c7;background:#fff7f7;color:#aa4242}
+  .topbar-mobile-logout{display:inline-flex;align-items:center;justify-content:center;gap:4px;border:1px solid #dce6df;border-radius:9px;min-height:34px;padding:6px 9px;background:#fff;color:#336c58;font-weight:750;font-size:11px;white-space:nowrap}
+  .topbar .topright{gap:5px}.topbar .avatar{width:32px;height:32px;flex-shrink:0}
+  .topbar .brand small{font-size:10px;max-width:145px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .topbar .select-small{max-width:100px;min-height:34px;padding:5px 4px;font-size:11px}
+}
+@media(max-width:380px){.mobilebar .mobile-nav-btn .nav-label{font-size:9px}.topbar .brand small{max-width:115px}.topbar .topright .avatar{display:none}}
+@media(min-width:761px){.mobile-more{display:none!important}}
+
+
+
+#sip-print-root{display:none}.sip-print-preview{overflow:auto;margin-top:16px;font-size:12px;max-height:540px}.sip-print-table{border-collapse:collapse;width:100%;font-size:12px}.sip-print-table th,.sip-print-table td{border:1px solid #bfc9c3;padding:6px;vertical-align:top;text-align:left}
+@media print{body>*:not(#sip-print-root){display:none!important}#sip-print-root{display:block!important;position:static;width:100%;font:11pt/1.45 Arial,sans-serif;color:#111;background:white}#sip-print-root h1{font-size:18pt}#sip-print-root h2{font-size:14pt}#sip-print-root h3{font-size:12pt}.sip-print-table{font-size:9pt}.sip-print-table thead{display:table-header-group} @page{size:A4;margin:15mm}}
+
+/* SIPANDAI v3.5.1 — dialog internal seragam */
+.sip-dialog-backdrop{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(14,36,31,.55);backdrop-filter:blur(3px);animation:sipDialogFade .16s ease-out}
+.sip-dialog-panel{width:min(100%,440px);max-height:min(82vh,650px);overflow:auto;background:#fff;border:1px solid #e1eee8;border-radius:20px;box-shadow:0 26px 75px rgba(7,39,29,.28);padding:26px 24px 22px;animation:sipDialogPop .18s ease-out;outline:none}
+.sip-dialog-icon{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:#e8f4ee;color:#176c59;font-size:22px;font-weight:800;margin-bottom:16px}
+.sip-dialog-danger .sip-dialog-icon{background:#fff0ed;color:#b7494b}
+.sip-dialog-panel h2{font-size:19px;line-height:1.3;margin:0 0 10px;color:#19312e}
+.sip-dialog-panel p{font-size:14px;line-height:1.65;margin:0 0 23px;color:#53655e;white-space:pre-line;overflow-wrap:anywhere}
+.sip-dialog-buttons{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:10px}
+.sip-dialog-buttons .btn{min-width:112px;min-height:42px}
+.sip-dialog-danger .sip-dialog-ok{background:#b7494b;border-color:#b7494b;color:#fff}
+.sip-dialog-danger .sip-dialog-ok:hover{background:#a33d40}
+.sip-dialog-cancel[hidden]{display:none}
+@media(max-width:480px){.sip-dialog-panel{padding:22px 18px;border-radius:16px}.sip-dialog-buttons .btn{flex:1}}
+@keyframes sipDialogFade{from{opacity:0}to{opacity:1}}
+@keyframes sipDialogPop{from{transform:translateY(9px) scale(.985);opacity:.75}to{transform:none;opacity:1}}
+@media(prefers-reduced-motion:reduce){.sip-dialog-backdrop,.sip-dialog-panel{animation:none}}
+
+/* SIPANDAI v3.7: navigasi kontekstual dua tingkat, ringkas dan ramah ponsel */
+.tah-tabs{display:flex;align-items:center;gap:6px;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:thin;position:sticky;top:0;z-index:8;background:rgba(245,248,247,.97);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:14px;padding:7px;margin:16px 0;scroll-margin-top:8px;box-shadow:0 7px 18px rgba(22,56,46,.035)}
+.tah-tab{appearance:none;flex:0 0 auto;min-height:43px;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;padding:9px 13px;border-radius:10px;border:1px solid transparent;background:transparent;color:#60756b;font-weight:720;font-size:13px;transition:background .16s ease,color .16s ease}
+.tah-tab[aria-selected="true"]{background:var(--green);color:white;box-shadow:0 4px 12px rgba(23,108,89,.16)}
+.tah-tab:not([aria-selected="true"]):hover{background:#e6f1eb;color:var(--green2)}
+.tah-tab:focus-visible{outline:3px solid #9bd1b8;outline-offset:1px}
+.tah-tab-icon{font-size:16px;line-height:1}
+.tah-pane{min-width:0;animation:tahShow .16s ease-out}
+.tah-pane[hidden]{display:none!important}
+.tah-pane > :first-child{margin-top:0}
+.tah-intro-card{background:#fff;border:1px solid var(--line);border-radius:15px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:17px 20px}
+.tah-intro-card>b,.tah-intro-card>div>b{font-size:15px}
+.tah-intro-card .hint{margin-top:4px}
+.tah-compact-select{width:min(100%,245px);flex:0 1 245px}
+.tah-compact-select .label{margin-bottom:4px}
+.tah-compact-select select,.tah-compact-select input{min-height:39px}
+#tah-pane-overview .table-wrap table{min-width:680px}
+#tah-pane-reports .sip-print-preview{max-height:650px}
+@keyframes tahShow{from{opacity:.7;transform:translateY(3px)}to{opacity:1;transform:none}}
+@media(max-width:760px){.tah-tabs{position:sticky;top:0;margin:12px -3px;padding:6px;gap:4px;border-radius:12px}.tah-tab{font-size:12px;padding:9px 11px;min-height:41px}.tah-intro-card{padding:15px;align-items:stretch}.tah-compact-select{flex:1 1 100%;width:100%}}
+@media(prefers-reduced-motion:reduce){.tah-pane{animation:none}.tah-tab{transition:none}}
+
+/* v4.0 GitHub Pages: standalone fullscreen layout and safe bottom navigation. */
+html,body{min-height:100%;width:100%;}
+@media(max-width:760px){
+ .mobilebar{position:fixed;bottom:0;left:0;right:0;z-index:40;}
+ .main-content{padding-bottom:calc(108px + env(safe-area-inset-bottom));}
+ .mobile-more{position:fixed;z-index:41;}
+}

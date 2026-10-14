@@ -2,5 +2,5 @@
    https://sipandai-api.namaakun.workers.dev/api
    File ini PUBLIK di GitHub. Jangan masukkan password, token, atau secret. */
 window.SIPANDAI_CONFIG = Object.freeze({
-  API_URL: 'sipandai-api.rafiarrohman08.workers.dev/api'
+  API_URL: 'https://sipandai-api.rafiarrohman08.workers.dev/api'
 });

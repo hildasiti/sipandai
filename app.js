@@ -1,4 +1,4 @@
-console.info('SIPANDAI v4.0 — GitHub Pages & Apps Script API');
+console.info('SIPANDAI v4.1 — Admin Keluarga & Pencarian');
 'use strict';
 const S={token:'',user:null,home:null,view:'dashboard',classId:'',childId:'',additional:{},att:null,attEdit:false,attMode:'HARIAN',attDate:'',attMapel:'',sessionNo:'1',busy:false,menuCache:new Map(),needsHome:false,attRequest:0,learningTab:'journal'};
 try { S.token=sessionStorage.getItem('sipandai_token')||''; } catch(e) {}
@@ -131,10 +131,10 @@ async function submitAction(action,data,opt={}){
   try{
     busy(true);
     const res=await call(action,data);
-    if(['createUser','resetPassword','createClass','createSubject','addStudent','assignTeacher','createParent','linkParent','reviewRequest','requestLink','saveNotice','publishNotice','confirmNotice','saveBehavior','publishBehavior','saveAttendance'].includes(action)){
+    if(['createUser','resetPassword','createClass','createSubject','addStudent','assignTeacher','linkParent','reviewRequest','requestLink','saveNotice','publishNotice','confirmNotice','saveBehavior','publishBehavior','saveAttendance'].includes(action)){
       S.needsHome=true;
       if(action==='saveAttendance')forgetMenuCache('attendance');
-      if(['createParent','linkParent'].includes(action))forgetMenuCache('parents');
+      if(['linkParent','resetPassword'].includes(action))forgetMenuCache('parents');
       if(action==='reviewRequest'||action==='requestLink')forgetMenuCache('requests');
     }
     if(opt.credentials)showCredential(res);
@@ -153,8 +153,8 @@ function menuItems(){
   // Modul utama saja di sidebar; kegiatan Absensi & Perilaku merupakan tab Teacher Planner.
   const all=['dashboard','learning','tahfidz','notices'];
   if(!role('GURU_MAPEL'))all.push('progress');
-  if(role('ADMIN','GURU_KELAS'))all.push('students','teachers','parents','requests');
-  if(role('ORANG_TUA'))all.push('parents');
+  if(role('ADMIN','GURU_KELAS'))all.push('students','teachers');
+  if(role('ADMIN','ORANG_TUA'))all.push('parents');
   if(role('ADMIN'))all.push('users','classes');
   all.push('printing','settings');
   return all;
@@ -181,11 +181,11 @@ function toggleMobileMore(open){
   if(next)el.querySelector('.mobile-more-close')?.focus();
   else if(el.contains(document.activeElement))trigger?.focus();
 }
-function loginUI(){S.user=null;$('#app').innerHTML=`<div class="login-wrap"><div class="login-card"><div class="brand"><span class="logo">S</span><div><div class="logo-name">SIPANDAI</div><div class="small muted">Sekolah dan keluarga, saling terhubung</div></div></div><h1>Selamat datang kembali</h1><p class="muted">Masuk untuk melihat aktivitas pembelajaran dan perkembangan anak.</p><form id="login-form"><div class="field"><label class="label">Username / NIS</label><input name="username" autocomplete="username" required placeholder="Masukkan username atau NIS"></div><div class="field"><label class="label">Password</label><input name="password" type="password" autocomplete="current-password" required placeholder="Masukkan password"></div><button type="submit" class="btn btn-primary btn-full">Masuk ke SIPANDAI →</button></form><div class="login-foot">Orang tua menggunakan NIS atau username akun keluarga dan password yang diberikan oleh guru kelas. Jika lupa password, hubungi guru kelas.</div></div></div>`;}
+function loginUI(){S.user=null;$('#app').innerHTML=`<div class="login-wrap"><div class="login-card"><div class="brand"><span class="logo">S</span><div><div class="logo-name">SIPANDAI</div><div class="small muted">Sekolah dan keluarga, saling terhubung</div></div></div><h1>Selamat datang kembali</h1><p class="muted">Masuk untuk melihat aktivitas pembelajaran dan perkembangan anak.</p><form id="login-form"><div class="field"><label class="label">Username / NIS</label><input name="username" autocomplete="username" required placeholder="Masukkan username atau NIS"></div><div class="field"><label class="label">Password</label><input name="password" type="password" autocomplete="current-password" required placeholder="Masukkan password"></div><button type="submit" class="btn btn-primary btn-full">Masuk ke SIPANDAI →</button></form><div class="login-foot">Orang tua menggunakan NIS atau username akun keluarga dan password yang diberikan oleh guru kelas. Jika lupa password, hubungi Admin sekolah.</div></div></div>`;}
 function passwordUI(){ $('#app').innerHTML=`<div class="login-wrap"><div class="login-card"><div class="brand"><span class="logo">S</span><b class="logo-name">SIPANDAI</b></div><h1>Ganti password awal</h1><p class="muted">Untuk menjaga data siswa, password sementara wajib diganti sebelum mengakses aplikasi.</p>${changePasswordForm()}<button class="btn btn-outline btn-full section-gap" data-action="logout">Keluar akun</button></div></div>`;}
 function changePasswordForm(){return `<form id="change-password-form"><div class="field"><label class="label">Password saat ini</label><input type="password" name="oldPassword" required autocomplete="current-password"></div><div class="field"><label class="label">Password baru</label><input type="password" name="newPassword" minlength="5" required autocomplete="new-password" placeholder="Minimal 5 karakter; angka, huruf, atau campuran"></div><button class="btn btn-primary" type="submit">Simpan password baru</button></form>`;}
 async function loadHome(){const home=await call('home',{classId:S.classId,childId:S.childId});S.needsHome=false;S.home=home;S.user=home.user;if(S.user.role==='GURU_MAPEL')S.attMode='MAPEL';S.classId=home.classId;S.childId=home.currentChild?.id||'';if(S.user.mustChangePassword){passwordUI();return;}baseUI();render();}
-function render(){if(!S.home)return;document.querySelectorAll('[data-action=nav]').forEach(el=>el.classList.toggle('active',el.dataset.view===S.view||(el.dataset.view==='learning'&&isLearningView(S.view))));switch(S.view){case 'tahfidz':return renderTahfidz();case 'journal':return renderJournal();case 'assessments':return renderAssessments();case 'tasks':return renderTasks();case 'progress':return renderProgress();case 'dashboard':return renderDashboard();case 'printing':return renderPrinting();case 'notices':return renderNotices();case 'attendance':return renderAttendance();case 'behaviors':return renderBehaviors();case 'students':return renderStudents();case 'teachers':return renderTeachers();case 'parents':return renderParents();case 'requests':return renderRequests();case 'users':return renderUsers();case 'classes':return renderClasses();case 'settings':return renderSettings();default:S.view='dashboard';renderDashboard();}}
+function render(){if(!S.home)return;document.querySelectorAll('[data-action=nav]').forEach(el=>el.classList.toggle('active',el.dataset.view===S.view||(el.dataset.view==='learning'&&isLearningView(S.view))));switch(S.view){case 'tahfidz':return renderTahfidz();case 'journal':return renderJournal();case 'assessments':return renderAssessments();case 'tasks':return renderTasks();case 'progress':return renderProgress();case 'dashboard':return renderDashboard();case 'printing':return renderPrinting();case 'notices':return renderNotices();case 'attendance':return renderAttendance();case 'behaviors':return renderBehaviors();case 'students':return renderStudents();case 'teachers':return renderTeachers();case 'parents':return renderParents();case 'requests':S.view='parents';FAMILY.tab='requests';return renderParents();case 'users':return renderUsers();case 'classes':return renderClasses();case 'settings':return renderSettings();default:S.view='dashboard';renderDashboard();}}
 const LEARNING_VIEWS=['attendance','journal','assessments','tasks','behaviors'];
 function isLearningView(id){return LEARNING_VIEWS.includes(id);}
 function learningTabs(){
@@ -215,7 +215,7 @@ function setContent(html){
 function stat(label,value,sub=''){return `<div class="card stat"><div class="meta">${E(label)}</div><div class="value">${E(value)}</div><div class="meta">${E(sub)}</div></div>`;}
 function childCards(){const children=S.home.children||[];return `<div class="child-grid">${children.map(c=>`<button type="button" class="child-card ${S.childId===c.id?'selected':''}" data-action="switch-child" data-id="${E(c.id)}"><div class="row"><span class="badge-round">🎒</span><div><div class="child-name">${E(c.name)}</div><div class="small muted">NIS ${E(c.nis)} · ${E(className(c.classId))}</div></div></div></button>`).join('')}</div>`;}
 function renderDashboard(){const x=S.home,st=x.stats,cl=className(x.classId);const parent=role('ORANG_TUA');let html=head(parent?'Portal keluarga':'Ringkasan kegiatan',parent?'Informasi belajar putra-putri Anda, dalam satu akun.':'Pantau aktivitas kelas dan informasi terbaru.');
-  if(parent)html+=`<div class="card"><div class="panel-title">Anak terhubung <span class="pill green">${x.children.length} anak</span></div>${x.children.length?childCards():empty('Belum ada anak yang terhubung. Silakan ajukan penghubungan melalui menu Keluarga.')}</div>`;
+  if(parent)html+=`<div class="card"><div class="panel-title">Anak terhubung <span class="pill green">${x.children.length} anak</span></div>${x.children.length?childCards():empty('Belum ada anak yang terhubung. Silakan ajukan penghubungan melalui menu Keluarga kepada Admin.')}</div>`;
   else html+=`<div class="notice">Kelas aktif: <b>${E(cl)}</b>. ${role('ADMIN')?'Mulailah dengan membuat akun Guru Kelas, kemudian kelas dan siswa.':role('KEPALA_SEKOLAH')?'Akun Kepala Sekolah memiliki akses monitoring.':'Input satu kali akan digunakan sebagai informasi kelas dan orang tua.'}</div>`;
   html+=`<div class="grid grid4 section-gap">${parent?'':stat('Siswa di kelas',st.students)}${stat('Pengumuman terbit',st.notices)}${stat(parent?'Hari hadir tercatat':'Hadir hari ini',st.present||0,parent?`Dari ${st.daysRecorded||0} hari tercatat`:`Dari ${st.todayRecorded||0} absensi masuk`)}${stat('Catatan perilaku',st.behaviors)}</div>`;
   html+=`<div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Pengumuman terbaru <button type="button" class="btn btn-sm" data-action="nav" data-view="notices">Lihat semua</button></div><div class="stack">${x.notices.filter(a=>a.status==='PUBLISHED').slice(0,4).map(n=>`<div class="item"><div class="small muted">${E(n.createdAt.slice(0,10))} · ${E(n.scope==='SEKOLAH'?'Sekolah':className(n.classId))}</div><h3>${E(n.title)}</h3><p class="small">${E(n.body.slice(0,180))}</p></div>`).join('')||empty('Belum ada pengumuman.')}</div></div><div class="card"><div class="panel-title">Catatan perkembangan perilaku <button type="button" class="btn btn-sm" data-action="nav" data-view="behaviors">Selengkapnya</button></div><div class="stack">${x.behaviors.slice(0,4).map(b=>`<div class="item"><div class="item-head"><span class="pill ${b.kind==='POSITIF'?'green':'yellow'}">${b.kind==='POSITIF'?'Apresiasi':'Pembinaan'}</span><span class="small muted">${E(b.createdAt.slice(0,10))}</span></div><h3>${E(parent?'Untuk '+(x.currentChild?.name||'anak'):studentName(b.studentId))}</h3><p class="small">${E(b.description.slice(0,155))}</p></div>`).join('')||empty('Belum ada catatan perilaku.')}</div></div></div>`;
@@ -278,13 +278,13 @@ async function importStudentBatch(){
   try{
     const raw=file?await file.text():$('#import-students-text').value;
     const rows=parseImportStudents(raw);
-    if(!await sipConfirm('Import '+rows.length+' baris ke kelas '+className(S.classId)+' dan buat akun orang tua untuk NIS baru?',{title:'Konfirmasi impor siswa',confirmText:'Ya, impor siswa'}))return;
+    if(!await sipConfirm('Impor '+rows.length+' siswa ke kelas '+className(S.classId)+(role('ADMIN')?' sekaligus membuat akun orang tua untuk NIS baru?':' tanpa membuat akun orang tua?'),{title:'Konfirmasi impor siswa',confirmText:'Ya, impor siswa'}))return;
     if(out)out.textContent='Menyimpan '+rows.length+' baris, mohon tunggu...';
     const r=await call('importStudentsParents',{classId:S.classId,rows});
-    if(out)out.textContent='Berhasil: '+r.created+' siswa + akun orang tua. Dilewati: '+r.skipped+'. Password awal: '+r.password+'. '+(r.duplicates||[]).map(x=>x.nis+' ('+x.reason+')').join('; ');
-    S.needsHome=true;
+    if(out)out.textContent='Berhasil: '+r.created+' siswa baru; '+(r.createdParents||0)+' akun orang tua dibuat'+(r.existingCompleted?' (termasuk '+r.existingCompleted+' untuk siswa yang sudah ada)':'')+'. Dilewati: '+r.skipped+'. '+(r.password?'Password awal: '+r.password+'. ':'')+(r.duplicates||[]).map(x=>x.nis+' ('+x.reason+')').join('; ');
+    S.needsHome=true;FAMILY.list=[];forgetMenuCache('parents');
     await loadHome();
-    toast('Impor berhasil: '+r.created+' akun dibuat.');
+    toast('Impor selesai: '+r.created+' siswa baru'+(r.createdParents?' dan '+r.createdParents+' akun orang tua dibuat':'')+'.');
   }catch(e){if(out)out.textContent='Impor gagal: '+e.message;toast(e.message,true);}
 }
 function downloadImportTemplate(){
@@ -292,10 +292,13 @@ function downloadImportTemplate(){
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+text],{type:'text/csv;charset=utf-8'}));a.download='template_import_sipandai.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 
-function renderStudents(){if(!role('ADMIN','GURU_KELAS'))return;const x=S.home;let html=head('Data siswa','Kelola identitas siswa pada kelas aktif.');
-  html+=`<div class="grid grid2"><div class="card"><div class="panel-title" id="student-title">Tambah siswa</div><form id="student-form"><input type="hidden" name="id" value=""><div class="field"><label class="label">NIS</label><input name="nis" required placeholder="Nomor induk siswa" maxlength="35"></div><div class="field"><label class="label">Nama lengkap</label><input name="name" required placeholder="Nama siswa"></div><div class="actions"><button class="btn btn-primary" type="submit">Simpan siswa</button><button type="button" class="btn" data-action="student-new">Batal edit / siswa baru</button></div><p class="hint">Mengubah NIS yang digunakan sebagai username orang tua juga memperbarui username tersebut.</p></form></div><div class="card"><div class="panel-title">Buat akun orang tua</div><form id="parent-form"><div class="field"><label class="label">Siswa</label><select name="studentId" required>${fillOptions(x.students)}</select></div><div class="field"><label class="label">Nama orang tua / wali</label><input name="fullName" required></div><div class="form-grid"><div class="field"><label class="label">Hubungan</label><select name="relation"><option>Ayah</option><option>Ibu</option><option>Wali</option></select></div><div class="field"><label class="label">No. kontak (opsional)</label><input name="phone"></div></div><div class="field"><label class="label">Username (kosongkan untuk NIS)</label><input name="username" placeholder="Otomatis NIS siswa"></div><button class="btn btn-primary" type="submit">Buat akun keluarga</button></form></div></div><div id="credential-box"></div>`;
-  html+=`<div class="card section-gap"><div class="panel-title">Import Siswa + Akun Orang Tua (Sekaligus)</div><p class="hint">Format dua kolom: <b>NIS,Nama Siswa</b>. Siswa baru otomatis memperoleh akun orang tua: username = NIS, password awal = <b>sipandai123</b>. Data NIS yang sudah ada dilewati. Maksimal 100 siswa per impor.</p><div class="field"><label class="label">Unggah CSV (opsional)</label><input type="file" id="import-csv-file" accept=".csv,text/csv,text/plain"></div><div class="field"><label class="label">Atau tempel dari Excel / Google Sheets (2 kolom)</label><textarea id="import-students-text" rows="6" placeholder="NIS,Nama Siswa&#10;10201,Ahmad Fauzan&#10;10202,Aisyah Zahra"></textarea></div><div class="actions"><button class="btn" type="button" data-action="import-template">Unduh contoh CSV</button><button class="btn btn-primary" type="button" data-action="import-students">Import dan Buat Akun</button></div><div id="import-result" class="hint" aria-live="polite"></div><p class="hint">Nama akun wali untuk impor sementara berupa 'Orang tua/wali + nama siswa' dan bisa dilengkapi nanti. Akun saudara kandung tidak digabung otomatis; lakukan verifikasi hubungan keluarga melalui menu Keluarga.</p></div>`;
-  html+=`<div class="card section-gap"><div class="panel-title">Siswa kelas ${E(className(x.classId))} <span class="pill">${x.students.length} siswa</span></div>${x.students.length?`<div class="table-wrap"><table><thead><tr><th>NIS</th><th>Nama siswa</th><th>Tindakan</th></tr></thead><tbody>${x.students.map(s=>`<tr><td>${E(s.nis)}</td><td><b>${E(s.name)}</b></td><td><button type="button" class="btn btn-sm" data-action="edit-student" data-id="${E(s.id)}">Edit siswa</button></td></tr>`).join('')}</tbody></table></div>`:empty('Belum ada siswa. Tambahkan siswa pertama.')}</div>`;
+function renderStudents(){
+  if(!role('ADMIN','GURU_KELAS'))return;
+  const x=S.home,isAdmin=role('ADMIN');
+  let html=head('Data siswa','Kelola identitas dan daftar siswa pada kelas aktif.');
+  html+=`<div class="card"><div class="panel-title" id="student-title">Tambah siswa</div><form id="student-form"><input type="hidden" name="id" value=""><div class="form-grid"><div class="field"><label class="label">NIS</label><input name="nis" required maxlength="35" placeholder="Nomor induk siswa"></div><div class="field"><label class="label">Nama lengkap</label><input name="name" required maxlength="140" placeholder="Nama siswa"></div></div><div class="actions"><button class="btn btn-primary" type="submit">Simpan siswa</button><button type="button" class="btn" data-action="student-new">Batal edit / siswa baru</button></div><p class="hint">${isAdmin?'Perubahan NIS yang juga menjadi username orang tua akan memperbarui login terkait.':'Pengelolaan akun orang tua, penghubungan anak, dan reset password merupakan kewenangan Admin.'}</p></form></div>`;
+  html+=`<div class="card section-gap"><div class="panel-title">${isAdmin?'Impor Siswa + Akun Orang Tua':'Impor Data Siswa'}</div><p class="hint">Format dua kolom: <b>NIS,Nama Siswa</b>. Maksimal 100 siswa per proses. ${isAdmin?'Admin otomatis membuat akun wali untuk NIS baru <b>atau melengkapi akun wali siswa di kelas ini yang sebelumnya diimpor guru</b>. Username = NIS, password awal <b>sipandai123</b>. Relasi saudara kandung dikelola melalui menu Keluarga.':'Impor Guru Kelas hanya menambahkan siswa ke kelas aktif, <b>tanpa membuat akun atau relasi orang tua</b>.'}</p><div class="field"><label class="label">Unggah CSV (opsional)</label><input type="file" id="import-csv-file" accept=".csv,text/csv,text/plain"></div><div class="field"><label class="label">Atau tempel dari Excel / Google Sheets</label><textarea id="import-students-text" rows="5" placeholder="NIS,Nama Siswa&#10;10201,Ahmad Fauzan&#10;10202,Aisyah Zahra"></textarea></div><div class="actions"><button class="btn" type="button" data-action="import-template">Unduh contoh CSV</button><button class="btn btn-primary" type="button" data-action="import-students">${isAdmin?'Impor Siswa & Buat Akun':'Impor Data Siswa'}</button></div><div id="import-result" class="hint" aria-live="polite"></div></div>`;
+  html+=`<div class="card section-gap"><div class="panel-title">Siswa kelas ${E(className(x.classId))} <span class="pill">${x.students.length} siswa</span></div>${x.students.length?`<div class="table-wrap"><table><thead><tr><th>NIS</th><th>Nama siswa</th><th>Tindakan</th></tr></thead><tbody>${x.students.map(st=>`<tr><td>${E(st.nis)}</td><td><b>${E(st.name)}</b></td><td><button type="button" class="btn btn-sm" data-action="edit-student" data-id="${E(st.id)}">Edit siswa</button></td></tr>`).join('')}</tbody></table></div>`:empty('Belum ada siswa. Tambahkan siswa pertama.')}</div>`;
   setContent(html);
 }
 function editStudentForm(id){
@@ -324,11 +327,75 @@ async function renderTeachers(){
   if(!teachers.length)html+=`<div class="notice warning section-gap">Belum ada akun Guru Mapel aktif. Admin perlu membuatnya melalui menu Akun Guru. Guru Kelas tetap bisa mengampu seluruh mapel sampai ditugaskan.</div>`;
   setContent(html);
 }
-async function renderParents(){if(role('ORANG_TUA')){setContent(head('Akun keluarga','Kelola penghubungan beberapa anak dalam satu akun.')+`<div class="card"><div class="panel-title">Putra-putri terhubung</div>${S.home.children.length?childCards():empty('Belum ada anak terhubung.')}</div><div class="card section-gap"><div class="panel-title">Ajukan penambahan anak</div><p class="small muted">Masukkan NIS anak lain. Guru kelas akan memverifikasi hubungan keluarga sebelum informasi anak dapat dibuka.</p><form id="request-link-form" class="section-gap"><div class="field"><label class="label">NIS anak</label><input name="nis" required placeholder="NIS anak lainnya"></div><button class="btn btn-primary" type="submit">Kirim pengajuan</button></form></div>`);return;}
-  if(!role('ADMIN','GURU_KELAS'))return;const parentKey=menuCacheKey('parents',{classId:S.classId});if(!(S.menuCache.get(parentKey)?.until>Date.now()))setContent(head('Akun keluarga','Akun orang tua, reset password, dan relasi antar-anak.')+loader());try{const all=await cachedCall('parents',{classId:S.classId},45000);if(S.view!=='parents')return;S.additional.parents=all;const distinct=[...new Map(all.map(x=>[x.userId,x])).values()];const x=S.home;
-  let html=head('Akun keluarga','Orang tua dapat menggunakan satu akun untuk beberapa siswa.')+`<div class="grid grid2"><div class="card"><div class="panel-title">Hubungkan akun yang sudah ada</div><form id="link-parent-form"><div class="field"><label class="label">Akun orang tua dalam kelas ini</label><select name="parentUserId" required>${fillOptions(distinct.map(p=>({id:p.userId,name:p.parentName+' ('+p.username+')'})))}</select></div><div class="field"><label class="label">Siswa tambahan</label><select name="studentId" required>${fillOptions(x.students)}</select></div><div class="field"><label class="label">Hubungan</label><select name="relation"><option>Ayah</option><option>Ibu</option><option>Wali</option></select></div><button type="submit" class="btn btn-primary">Hubungkan anak</button><p class="hint">Untuk anak dari kelas berbeda, gunakan pengajuan melalui akun orang tua dan persetujuan Guru Kelas terkait.</p></form></div><div class="card"><div class="panel-title">Daftar orang tua</div><div class="stack">${all.map(p=>`<div class="item"><div class="item-head"><b>${E(p.parentName)}</b><span class="pill">${E(p.username)}</span></div><p class="small muted">Orang tua dari ${E(p.studentName)}</p><div class="actions"><button class="btn btn-sm btn-outline" data-action="reset-user" data-id="${E(p.userId)}">Reset password</button></div></div>`).join('')||empty('Belum ada orang tua terdaftar untuk kelas ini.')}</div></div></div><div id="credential-box"></div>`;setContent(html);
-}catch(e){toast(e.message,true);}}
-async function renderRequests(){if(!role('ADMIN','GURU_KELAS'))return;if(!(S.menuCache.get(menuCacheKey('requests',{}))?.until>Date.now()))setContent(head('Verifikasi hubungan keluarga','Setujui hanya setelah memeriksa identitas dan hubungan orang tua.')+loader());try{const r=await cachedCall('requests',{},40000);if(S.view!=='requests')return;setContent(head('Verifikasi hubungan keluarga','Verifikasi dapat melibatkan guru kelas tujuan.')+`<div class="card"><div class="panel-title">Menunggu verifikasi <span class="pill yellow">${r.length}</span></div><div class="stack">${r.map(x=>`<div class="item"><b>${E(x.parentName)}</b> ingin menghubungkan anak <b>${E(x.studentName)}</b><div class="small muted">NIS: ${E(x.nis)} · ${E(x.createdAt.slice(0,10))}</div><div class="actions"><button class="btn btn-sm btn-primary" data-action="review-link" data-id="${E(x.id)}" data-status="APPROVED">Setujui</button><button class="btn btn-sm btn-danger" data-action="review-link" data-id="${E(x.id)}" data-status="REJECTED">Tolak</button></div></div>`).join('')||empty('Tidak ada permintaan yang menunggu.')}</div></div>`);}catch(e){toast(e.message,true);}}
+/* SIPANDAI v4.1 — manajemen keluarga khusus Admin; pencarian/filter/paginasi dilakukan
+ * langsung di browser setelah satu kali pemuatan daftar. Tidak ada request setiap tombol diketik. */
+const FAMILY={tab:'list',list:[],students:null,requests:null,classFilter:'',query:'',page:1,pageSize:12,parentQuery:'',linkClassId:'',selectedParentId:''};
+const familyWords=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('id').trim();
+function familyClassOptions(value,withAll=false){
+ const cs=S.home?.classes||[];
+ return (withAll?'<option value="">Semua kelas</option>':'<option value="">Pilih kelas</option>')+cs.map(c=>`<option value="${E(c.id)}" ${c.id===value?'selected':''}>${E(c.name)}</option>`).join('');
+}
+function familyTabNav(){return `<div class="module-tabs" role="tablist" aria-label="Kelola keluarga">${[['list','Daftar Orang Tua'],['link','Hubungkan Anak'],['requests','Verifikasi Relasi']].map(([id,name])=>`<button type="button" role="tab" class="module-tab ${FAMILY.tab===id?'active':''}" aria-selected="${FAMILY.tab===id}" data-action="family-tab" data-tab="${id}">${E(name)}</button>`).join('')}</div>`;}
+async function renderParents(){
+ if(role('ORANG_TUA')){
+   setContent(head('Akun keluarga','Lihat anak terhubung dan ajukan penghubungan kepada Admin.')+`<div class="card"><div class="panel-title">Putra-putri terhubung</div>${S.home.children.length?childCards():empty('Belum ada anak terhubung.')}</div><div class="card section-gap"><div class="panel-title">Ajukan penambahan anak</div><p class="hint">Masukkan NIS anak lain. <b>Hanya Admin</b> yang boleh memeriksa dan menyetujui hubungan keluarga.</p><form id="request-link-form"><div class="field"><label class="label">NIS anak</label><input name="nis" required maxlength="35" placeholder="NIS anak lainnya"></div><button class="btn btn-primary" type="submit">Kirim pengajuan kepada Admin</button></form></div>`);return;
+ }
+ if(!role('ADMIN'))return;
+ setContent(head('Keluarga & Orang Tua','Pencarian cepat, reset akun, dan verifikasi hubungan keluarga oleh Admin.')+familyTabNav()+'<div id="family-panel">'+loader()+'</div>');
+ if(!FAMILY.list.length){
+   try{FAMILY.list=await cachedCall('parents',{},60000);}catch(e){toast(e.message,true);const panel=$('#family-panel');if(panel)panel.innerHTML=empty('Tidak dapat memuat akun keluarga. '+e.message);return;}
+ }
+ if(S.view==='parents')paintFamilyPanel();
+}
+function paintFamilyPanel(){const area=$('#family-panel');if(!area||!role('ADMIN'))return;
+ if(FAMILY.tab==='list')area.innerHTML=familyListShell();
+ else if(FAMILY.tab==='link')area.innerHTML=familyLinkShell();
+ else{area.innerHTML=loader();void loadFamilyRequests();}
+ if(FAMILY.tab==='list')paintFamilyList();
+ else if(FAMILY.tab==='link'){updateFamilyParentChoices();updateFamilyStudentChoices();}
+}
+function familyListShell(){return `<div class="card"><div class="panel-title">Daftar akun orang tua <span class="pill">${FAMILY.list.length} akun</span></div><div class="family-filters"><div class="field"><label class="label" for="family-class">Filter kelas</label><select id="family-class">${familyClassOptions(FAMILY.classFilter,true)}</select></div><div class="field"><label class="label" for="family-search">Cari nama orang tua / siswa / NIS</label><input id="family-search" type="search" autocomplete="off" value="${E(FAMILY.query)}" placeholder="Ketik nama, NIS atau username..." aria-controls="family-results"></div></div><div id="family-results" aria-live="polite"></div><div id="credential-box"></div></div>`;}
+function familyMatch(row){
+ const subset=FAMILY.classFilter?row.children.filter(x=>x.classId===FAMILY.classFilter):row.children;
+ if(FAMILY.classFilter&&!subset.length)return false;
+ if(!FAMILY.query)return true;
+ const hay=familyWords([row.parentName,row.username,...subset.flatMap(x=>[x.studentName,x.nis,x.className])].join(' '));
+ return hay.includes(familyWords(FAMILY.query));
+}
+function paintFamilyList(){
+ const target=$('#family-results');if(!target)return;
+ const matches=FAMILY.list.filter(familyMatch),pages=Math.max(1,Math.ceil(matches.length/FAMILY.pageSize));
+ FAMILY.page=Math.min(Math.max(FAMILY.page,1),pages);
+ const shown=matches.slice((FAMILY.page-1)*FAMILY.pageSize,FAMILY.page*FAMILY.pageSize);
+ target.innerHTML=`<div class="family-resultbar"><span class="small muted">${matches.length} akun cocok · halaman ${FAMILY.page}/${pages}</span>${FAMILY.query?`<span class="pill green">Pencarian aktif</span>`:''}</div><div class="family-list">${shown.map(p=>{
+ const children=FAMILY.classFilter?p.children.filter(x=>x.classId===FAMILY.classFilter):p.children;
+ return `<div class="family-parent"><div class="family-parent-main"><div><b>${E(p.parentName)}</b><div class="small muted">Username: <code>${E(p.username)}</code></div></div><div class="family-parent-actions"><button class="btn btn-sm btn-outline" data-action="family-link-parent" data-id="${E(p.userId)}">Hubungkan Anak</button><button class="btn btn-sm btn-outline" data-action="reset-user" data-id="${E(p.userId)}">Reset Password</button></div></div><div class="family-children">${children.length?children.map(ch=>`<span class="family-child-chip">${E(ch.studentName)} · ${E(ch.className)}</span>`).join(''):'<span class="small muted">Belum memiliki anak terhubung</span>'}</div></div>`;
+ }).join('')||empty('Tidak ada akun yang cocok. Ubah filter atau kata pencarian.')}</div><div class="family-pagination"><button type="button" class="btn btn-sm" data-action="family-page" data-page="${FAMILY.page-1}" ${FAMILY.page===1?'disabled':''}>← Sebelumnya</button><span class="small muted">${matches.length?'Menampilkan '+((FAMILY.page-1)*FAMILY.pageSize+1)+'–'+Math.min(FAMILY.page*FAMILY.pageSize,matches.length):'0'} dari ${matches.length}</span><button type="button" class="btn btn-sm" data-action="family-page" data-page="${FAMILY.page+1}" ${FAMILY.page===pages?'disabled':''}>Berikutnya →</button></div>`;
+}
+function familyLinkShell(){const cls=FAMILY.linkClassId||S.classId;FAMILY.linkClassId=cls;
+ return `<div class="card"><div class="panel-title">Hubungkan anak ke akun orang tua</div><p class="hint">Hanya Admin yang dapat menyimpan hubungan keluarga. Pastikan identitas dan hubungan wali sudah diverifikasi.</p><form id="link-parent-form"><div class="family-filters"><div class="field"><label class="label" for="family-parent-query">Cari akun orang tua</label><input id="family-parent-query" type="search" autocomplete="off" placeholder="Nama / username orang tua" value="${E(FAMILY.parentQuery)}"></div><div class="field"><label class="label">Pilih akun orang tua</label><select id="family-parent-select" name="parentUserId" required></select></div><div class="field"><label class="label">Kelas anak</label><select id="family-link-class" required>${familyClassOptions(cls)}</select></div><div class="field"><label class="label">Pilih siswa</label><select id="family-link-student" name="studentId" required><option>Memuat siswa...</option></select></div><div class="field"><label class="label">Hubungan</label><select name="relation"><option>Ayah</option><option>Ibu</option><option>Wali</option></select></div></div><button type="submit" class="btn btn-primary">Simpan penghubungan</button></form><div id="family-link-message" class="hint section-gap" aria-live="polite"></div></div>`;
+}
+function updateFamilyParentChoices(){const select=$('#family-parent-select');if(!select)return;
+ const list=FAMILY.list.filter(p=>familyWords(p.parentName+' '+p.username).includes(familyWords(FAMILY.parentQuery)));
+ const selected=FAMILY.selectedParentId||select.value;
+ select.innerHTML='<option value="">Pilih akun yang sudah ada...</option>'+list.slice(0,100).map(p=>`<option value="${E(p.userId)}" ${p.userId===selected?'selected':''}>${E(p.parentName)} (${E(p.username)})</option>`).join('');
+ if(!list.some(p=>p.userId===selected))FAMILY.selectedParentId='';
+}
+async function updateFamilyStudentChoices(){const select=$('#family-link-student');if(!select)return;
+ if(!FAMILY.students){select.innerHTML='<option value="">Memuat siswa...</option>';try{FAMILY.students=await cachedCall('familyStudents',{},60000);}catch(e){select.innerHTML='<option value="">Gagal memuat siswa</option>';toast(e.message,true);return;}}
+ if(S.view!=='parents'||FAMILY.tab!=='link')return;
+ const current=$('#family-link-student');if(!current)return;
+ const list=FAMILY.students.filter(st=>st.classId===FAMILY.linkClassId);
+ current.innerHTML=fillOptions(list.map(st=>({id:st.id,name:st.name+' — '+st.nis})),undefined,list.length?'Pilih siswa...':'Tidak ada siswa pada kelas ini');
+}
+async function loadFamilyRequests(force=false){const area=$('#family-panel');if(!area||FAMILY.tab!=='requests')return;
+ try{if(!FAMILY.requests||force){FAMILY.requests=await cachedCall('requests',{},force?0:30000);}
+ if(S.view!=='parents'||FAMILY.tab!=='requests')return;
+ area.innerHTML=`<div class="card"><div class="panel-title">Permintaan menunggu verifikasi <span class="pill yellow">${FAMILY.requests.length}</span></div><p class="hint">Periksa identitas wali secara langsung sebelum menyetujui. Guru Kelas tidak dapat menyetujui relasi.</p><div class="stack">${FAMILY.requests.map(r=>`<div class="item"><b>${E(r.parentName)}</b> mengajukan anak <b>${E(r.studentName)}</b><div class="small muted">NIS: ${E(r.nis)} · ${E((r.createdAt||'').slice(0,10))}</div><div class="actions"><button type="button" class="btn btn-sm btn-primary" data-action="review-link" data-id="${E(r.id)}" data-status="APPROVED">Setujui</button><button type="button" class="btn btn-sm btn-danger" data-action="review-link" data-id="${E(r.id)}" data-status="REJECTED">Tolak</button></div></div>`).join('')||empty('Tidak ada permintaan yang menunggu.')}</div></div>`;
+ }catch(e){toast(e.message,true);if(area)area.innerHTML=empty('Tidak dapat memuat permintaan.');}
+}
+async function reloadFamilyList(){FAMILY.list=[];forgetMenuCache('parents');const area=$('#family-panel');if(area)area.innerHTML=loader();try{FAMILY.list=await cachedCall('parents',{},0);if(S.view==='parents')paintFamilyPanel();}catch(e){toast(e.message,true);}}
+
 async function renderUsers(){if(!role('ADMIN'))return;try{const users=(S.home.staff||[]);S.additional.users=users;const html=head('Pengguna sekolah','Buat akun guru terlebih dahulu sebelum membuat kelas.')+`<div class="grid grid2"><div class="card"><div class="panel-title">Buat akun sekolah</div><form id="user-form"><div class="field"><label class="label">Nama pengguna</label><input name="fullName" required></div><div class="field"><label class="label">Username</label><input name="username" required placeholder="Contoh: guru.nur" pattern="[a-zA-Z0-9._-]{3,90}"></div><div class="field"><label class="label">Role</label><select name="role"><option value="GURU_KELAS">Guru Kelas</option><option value="GURU_MAPEL">Guru Mapel</option><option value="KEPALA_SEKOLAH">Kepala Sekolah</option></select></div><button class="btn btn-primary" type="submit">Buat akun</button></form></div><div class="card"><div class="panel-title">Daftar pengguna</div><div class="stack">${users.map(u=>`<div class="item"><div class="item-head"><b>${E(u.fullName)}</b><span class="pill">${E(u.role.replaceAll('_',' '))}</span></div><p class="small muted">${E(u.username)} · ${E(u.active==='YES'?'Aktif':'Nonaktif')}</p><div class="actions"><button class="btn btn-sm btn-outline" data-action="reset-user" data-id="${E(u.id)}">Reset password</button></div></div>`).join('')}</div></div></div><div id="credential-box"></div>`;setContent(html);}catch(e){toast(e.message,true);}}
 async function renderClasses(){if(!role('ADMIN'))return;try{const teachers=S.home.staff||[];const roomTeachers=teachers.filter(t=>t.role==='GURU_KELAS');let html=head('Kelas & mata pelajaran','Buat kelas setelah akun Guru Kelas tersedia.')+`<div class="grid grid2"><div class="card"><div class="panel-title">Buat kelas</div><form id="class-form"><div class="field"><label class="label">Nama kelas</label><input name="name" required placeholder="Contoh: 5A"></div><div class="field"><label class="label">Guru Kelas pemilik</label><select name="teacherId" required>${fillOptions(roomTeachers)}</select></div><button class="btn btn-primary" type="submit">Tambah kelas</button></form></div><div class="card"><div class="panel-title">Tambah mata pelajaran</div><form id="subject-form"><div class="field"><label class="label">Nama mata pelajaran</label><input name="name" required placeholder="Contoh: Bahasa Sunda"></div><button class="btn btn-primary" type="submit">Simpan mapel</button></form></div></div><div class="card section-gap"><div class="panel-title">Kelas yang tersedia</div><div class="stack">${S.home.classes.map(x=>`<div class="item row-between"><b>${E(x.name)}</b><span class="pill green">Aktif</span></div>`).join('')||empty('Belum ada kelas.')}</div></div>`;setContent(html);}catch(e){toast(e.message,true);}}
 function renderSettings(){setContent(head('Pengaturan akun','Ganti password secara berkala untuk melindungi informasi siswa.')+`<div class="card" style="max-width:550px"><div class="panel-title">Keamanan akun</div><div class="notice">Username: <b>${E(S.user.username)}</b>. Sesi akan berakhir setelah password berhasil diganti.</div><div class="section-gap">${changePasswordForm()}</div></div>`);}
@@ -622,10 +689,9 @@ document.addEventListener('submit',async ev=>{
   if(formId==='user-form')return submitAction('createUser',d,{credentials:true,refresh:false});
   if(formId==='class-form')return submitAction('createClass',d);
   if(formId==='subject-form')return submitAction('createSubject',d);
-  if(formId==='student-form'){const updating=!!d.id;const r=await submitAction(updating?'updateStudent':'addStudent',{...d,classId:S.classId});if(r?.updatedParentLogin)toast('NIS diperbarui. Username akun orang tua terkait juga berubah. Beri tahu orang tua secara pribadi.');return;}
-  if(formId==='parent-form')return submitAction('createParent',d,{credentials:true,refresh:false});
+  if(formId==='student-form'){const updating=!!d.id;const r=await submitAction(updating?'updateStudent':'addStudent',{...d,classId:S.classId});if(r?.updatedParentLogin)toast('NIS dan username akun orang tua terkait telah diperbarui oleh Admin.');return;}
   if(formId==='assign-form')return submitAction('assignTeacher',{...d,classId:S.classId});
-  if(formId==='link-parent-form')return submitAction('linkParent',d);
+  if(formId==='link-parent-form'){if(!role('ADMIN'))return;const r=await submitAction('linkParent',d,{refresh:false});if(r){FAMILY.tab='list';FAMILY.query='';FAMILY.page=1;await reloadFamilyList();}return;}
   if(formId==='request-link-form')return submitAction('requestLink',d,{refresh:false});
   if(formId==='notice-form')return submitAction('saveNotice',{...d,classId:S.classId,requireConfirm:d.requireConfirm==='YES'});
   if(formId==='attendance-form'){const rows=[...f.querySelectorAll('.att-student[data-student-id]')].map(tr=>({studentId:tr.dataset.studentId,status:tr.querySelector('.att-status').value,note:tr.querySelector('.att-note').value}));const result=await submitAction('saveAttendance',{classId:S.classId,date:S.attDate,mode:S.attMode,mapelId:S.attMapel,sessionNo:S.sessionNo,rows,edit:!!S.att?.hasSaved&&S.attEdit},{refresh:false});if(result){forgetMenuCache('attendance');S.attEdit=false;S.att=null;loadAttendance();}return;}
@@ -664,6 +730,18 @@ document.addEventListener('click',async ev=>{
   if(action==='refresh-progress'){S.progress.lastKey='';return loadProgress(true);}
   if(action==='edit-progress-note')return editProgressNote(b.dataset.id);
   if(action==='clear-progress-note')return clearProgressNote();
+  if(action==='family-tab'){
+    if(!role('ADMIN'))return;
+    FAMILY.tab=b.dataset.tab;
+    document.querySelectorAll('.module-tabs [data-action="family-tab"]').forEach(el=>{const active=el.dataset.tab===FAMILY.tab;el.classList.toggle('active',active);el.setAttribute('aria-selected',String(active));});
+    paintFamilyPanel();return;
+  }
+  if(action==='family-link-parent'){
+    if(!role('ADMIN'))return;FAMILY.selectedParentId=b.dataset.id;FAMILY.parentQuery='';FAMILY.tab='link';
+    document.querySelectorAll('[data-action="family-tab"]').forEach(el=>{const active=el.dataset.tab==='link';el.classList.toggle('active',active);el.setAttribute('aria-selected',String(active));});
+    paintFamilyPanel();return;
+  }
+  if(action==='family-page'){FAMILY.page=Number(b.dataset.page)||1;paintFamilyList();return;}
   if(action==='import-students'){await importStudentBatch();return;}
   if(action==='import-template'){downloadImportTemplate();return;}
   if(action==='edit-student'){editStudentForm(b.dataset.id);return;}
@@ -706,7 +784,7 @@ document.addEventListener('click',async ev=>{
   }
   if(action==='task-file'){openTaskFile(b.dataset.id);return;}
   if(action==='mobile-more'){toggleMobileMore();return;}
-  if(action==='logout'){busy(true);processMessage('Mengakhiri sesi…');try{if(S.token)await call('logout');}catch(e){}finally{busy(false);}S.token='';S.user=null;S.home=null;S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';S.menuCache.clear();clearTahDom();S.needsHome=false;try{sessionStorage.removeItem('sipandai_token');}catch(e){}loginUI();return;}
+  if(action==='logout'){busy(true);processMessage('Mengakhiri sesi…');try{if(S.token)await call('logout');}catch(e){}finally{busy(false);}S.token='';S.user=null;S.home=null;S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';S.menuCache.clear();FAMILY.list=[];FAMILY.students=null;FAMILY.requests=null;FAMILY.query='';FAMILY.classFilter='';clearTahDom();S.needsHome=false;try{sessionStorage.removeItem('sipandai_token');}catch(e){}loginUI();return;}
   if(action==='switch-child'){clearTahDom();S.progress.lastKey='';S.childId=b.dataset.id;S.v2.assessmentId='';S.v2.taskId='';S.classId=(S.home.children.find(x=>x.id===S.childId)||{}).classId||S.classId;try{await loadHome();}catch(e){toast(e.message,true);}return;}
   if(action==='confirm-notice')return submitAction('confirmNotice',{noticeId:b.dataset.id});
   if(action==='publish-notice')return submitAction('publishNotice',{id:b.dataset.id});
@@ -719,11 +797,19 @@ document.addEventListener('click',async ev=>{
    if(action==='toggle-att-note'){const field=b.closest('.att-student')?.querySelector('.att-note-container');if(field){field.style.display=field.style.display==='none'?'block':'none';if(field.style.display==='block')field.querySelector('input')?.focus();}return;}
    if(action==='all-present'){document.querySelectorAll('.att-status:not(:disabled)').forEach(s=>{s.value='H';const card=s.closest('.att-student');card?.querySelectorAll('.att-choice-btn').forEach(btn=>{const active=btn.dataset.status==='H';btn.classList.toggle('selected',active);btn.setAttribute('aria-pressed',String(active));});});toast('Semua siswa ditandai Hadir. Jangan lupa simpan.');return;}
   if(action==='view-file')return openBehaviorFile(b.dataset.id);
-  if(action==='review-link'){if(!await sipConfirm('Pastikan hubungan keluarga telah diverifikasi. Lanjutkan?',{title:'Verifikasi hubungan keluarga'}))return;const result=await submitAction('reviewRequest',{id:b.dataset.id,status:b.dataset.status},{refresh:false});if(result)renderRequests();return;}
+  if(action==='review-link'){if(!await sipConfirm('Pastikan hubungan keluarga telah diverifikasi. Lanjutkan?',{title:'Verifikasi hubungan keluarga'}))return;const result=await submitAction('reviewRequest',{id:b.dataset.id,status:b.dataset.status},{refresh:false});if(result){FAMILY.requests=null;FAMILY.tab='requests';await loadFamilyRequests(true);FAMILY.list=[];forgetMenuCache('parents');}return;}
   if(action==='reset-user'){if(!await sipConfirm('Reset password akun ini? Sesi lama akan dibatalkan.',{title:'Reset password',confirmText:'Ya, reset password',danger:true}))return;return submitAction('resetPassword',{userId:b.dataset.id},{credentials:true,refresh:false});}
   if(action==='copy-credential'){try{await navigator.clipboard.writeText(b.dataset.value);toast('Kredensial disalin. Sampaikan secara pribadi.');}catch(e){toast('Gagal menyalin otomatis. Silakan salin teks kredensial.',true);}return;}
 });
-document.addEventListener('change',ev=>{if(ev.target.id==='progress-student'){S.progress.studentId=ev.target.value;loadProgress();return;}if(ev.target.id==='task-pick-student'){loadTaskDetail(S.v2.taskId,ev.target.value);return;}if(ev.target.id==='switch-class'){clearTahDom();S.progress.lastKey='';S.classId=ev.target.value;S.v2.assessmentId='';S.v2.taskId='';S.attMapel='';S.att=null;S.attEdit=false;loadHome().catch(e=>toast(e.message,true));}if(ev.target.id==='att-mode'){S.attMode=ev.target.value;S.att=null;S.attEdit=false;renderAttendance();}});
+document.addEventListener('input',ev=>{
+ if(ev.target.id==='family-search'){FAMILY.query=ev.target.value;FAMILY.page=1;paintFamilyList();}
+ if(ev.target.id==='family-parent-query'){FAMILY.parentQuery=ev.target.value;FAMILY.selectedParentId='';updateFamilyParentChoices();}
+});
+document.addEventListener('change',ev=>{
+ if(ev.target.id==='family-class'){FAMILY.classFilter=ev.target.value;FAMILY.page=1;paintFamilyList();return;}
+ if(ev.target.id==='family-link-class'){FAMILY.linkClassId=ev.target.value;void updateFamilyStudentChoices();return;}
+ if(ev.target.id==='family-parent-select'){FAMILY.selectedParentId=ev.target.value;return;}
+ if(ev.target.id==='progress-student'){S.progress.studentId=ev.target.value;loadProgress();return;}if(ev.target.id==='task-pick-student'){loadTaskDetail(S.v2.taskId,ev.target.value);return;}if(ev.target.id==='switch-class'){clearTahDom();S.progress.lastKey='';S.classId=ev.target.value;S.v2.assessmentId='';S.v2.taskId='';S.attMapel='';S.att=null;S.attEdit=false;loadHome().catch(e=>toast(e.message,true));}if(ev.target.id==='att-mode'){S.attMode=ev.target.value;S.att=null;S.attEdit=false;renderAttendance();}});
 (async()=>{if(!S.token){loginUI();return;}try{await loadHome();}catch(e){S.token='';try{sessionStorage.removeItem('sipandai_token');}catch(x){}loginUI();toast('Sesi berakhir. Silakan login kembali.',true);}})();
 
 /* SIPANDAI v3.5: laporan dan cetak via browser; ekspor tabel ke CSV kompatibel Excel. */

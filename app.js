@@ -1,4 +1,4 @@
-console.info('SIPANDAI v4.9 — Mapel, PWA, indikator edit asesmen dan nilai perkembangan.');
+console.info('SIPANDAI v4.12.2 — Ringkasan Tahfidz responsif tanpa tombol per siswa.');
 'use strict';
 const S={token:'',user:null,home:null,view:'dashboard',classId:'',childId:'',additional:{},att:null,attEdit:false,attMode:'HARIAN',attDate:'',attMapel:'',sessionNo:'1',busy:false,menuCache:new Map(),needsHome:false,attRequest:0,learningTab:'journal'};
 try { S.token=sessionStorage.getItem('sipandai_token')||''; } catch(e) {}
@@ -118,6 +118,39 @@ function cachedCall(action,payload={},ttl=30000){
 function forgetMenuCache(...actions){
   for(const k of S.menuCache.keys())if(actions.some(a=>k.includes('|'+a+'|')))S.menuCache.delete(k);
 }
+// v4.12.1: kompatibilitas untuk backend yang masih memakai dua endpoint Tahfidz lama.
+// Jika aksi gabungan tahDashboard belum tersedia, alihkan ke tahSettings + tahClassReport.
+// Tidak mengulang mutasi/simpan; kedua endpoint fallback bersifat hanya-baca.
+let tahDashboardUseLegacy=false;
+const pendingTahDashboard=new Map();
+function tahUnknownAction(err){return /aksi\s+tidak\s+dikenal(?:i)?|unknown\s+action/i.test(String(err?.message||err||''));}
+function fetchTahDashboard(payload,ttl=45000){
+  const key=menuCacheKey('tahDashboard',payload),cached=S.menuCache.get(key);
+  if(ttl!==0&&cached&&Date.now()<cached.until)return Promise.resolve(cached.value);
+  if(pendingTahDashboard.has(key))return pendingTahDashboard.get(key);
+  const request=(async()=>{
+    if(!tahDashboardUseLegacy){
+      try{
+        const combined=await cachedCall('tahDashboard',payload,ttl);
+        if(!combined?.settings||!combined?.klass)throw new Error('Respons ringkasan Tahfidz tidak lengkap.');
+        return combined;
+      }catch(err){
+        if(!tahUnknownAction(err))throw err;
+        tahDashboardUseLegacy=true;
+        console.warn('SIPANDAI: API Tahfidz gabungan belum tersedia; menggunakan endpoint lama sampai sesi ini berakhir.');
+      }
+    }
+    const [settings,klass]=await Promise.all([
+      cachedCall('tahSettings',payload,ttl),
+      cachedCall('tahClassReport',payload,ttl)
+    ]);
+    const result={settings,klass};
+    S.menuCache.set(key,{value:result,until:Date.now()+ttl});
+    return result;
+  })().finally(()=>pendingTahDashboard.delete(key));
+  pendingTahDashboard.set(key,request);
+  return request;
+}
 let operationStarted=0, operationTimer=null;
 function processLabel(action){return ({login:'Memeriksa akun dan hak akses',logout:'Mengakhiri sesi',saveAttendance:'Menyimpan absensi siswa',saveJournal:'Menyimpan jurnal pembelajaran',saveAssessment:'Menyimpan asesmen',saveTask:'Menyimpan penugasan',addStudent:'Menyimpan data siswa',importStudents:'Mengimpor siswa dan akun orang tua',updateStudent:'Memperbarui siswa',saveBehavior:'Menyimpan catatan perilaku',changePassword:'Mengganti password',resetPassword:'Mereset password',saveGrades:'Menyimpan nilai'})[action]||(/^archive/i.test(action)?'Mengarsipkan data':'Menghubungi server SIPANDAI');}
 function processMessage(label){const e=document.getElementById('sip-process-label');if(e)e.textContent=label||'Memproses permintaan…';}
@@ -221,7 +254,7 @@ function prefetchTahfidz(){
     const payload={classId,period};
     const key=menuCacheKey('tahDashboard',payload);
     if(S.menuCache.has(key)||pendingMenuRequests.has(key))return;
-    cachedCall('tahDashboard',payload,45000).catch(()=>{});
+    fetchTahDashboard(payload,45000).catch(()=>{});
   },1600);
 }
 function render(){if(!S.home)return;document.querySelectorAll('[data-action=nav]').forEach(el=>el.classList.toggle('active',el.dataset.view===S.view||(el.dataset.view==='learning'&&isLearningView(S.view))));switch(S.view){case 'tahfidz':return renderTahfidz();case 'journal':return renderJournal();case 'assessments':return renderAssessments();case 'tasks':return renderTasks();case 'progress':return renderProgress();case 'dashboard':return renderDashboard();case 'printing':if(role('ORANG_TUA')){S.view='dashboard';return renderDashboard();}return renderPrinting();case 'notices':return renderNotices();case 'attendance':return renderAttendance();case 'behaviors':return renderBehaviors();case 'students':return renderStudents();case 'teachers':return renderTeachers();case 'parents':return renderParents();case 'requests':S.view='parents';FAMILY.tab='requests';return renderParents();case 'users':return renderUsers();case 'classes':return renderClasses();case 'settings':return renderSettings();default:S.view='dashboard';renderDashboard();}}
@@ -1218,7 +1251,7 @@ document.addEventListener('click',async ev=>{
   }
   if(action==='task-file'){openTaskFile(b.dataset.id);return;}
   if(action==='mobile-more'){toggleMobileMore();return;}
-  if(action==='logout'){busy(true);processMessage('Mengakhiri sesi…');try{if(S.token)await call('logout');}catch(e){}finally{busy(false);}S.token='';S.user=null;S.home=null;S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';PARENT_GRADE_UI.report=null;PARENT_GRADE_UI.key='';PARENT_GRADE_UI.period='ALL';S.menuCache.clear();FAMILY.list=[];FAMILY.students=null;FAMILY.requests=null;FAMILY.query='';FAMILY.classFilter='';clearTahDom();S.needsHome=false;try{sessionStorage.removeItem('sipandai_token');}catch(e){}loginUI();return;}
+  if(action==='logout'){tahDashboardUseLegacy=false;busy(true);processMessage('Mengakhiri sesi…');try{if(S.token)await call('logout');}catch(e){}finally{busy(false);}S.token='';S.user=null;S.home=null;S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';PARENT_GRADE_UI.report=null;PARENT_GRADE_UI.key='';PARENT_GRADE_UI.period='ALL';S.menuCache.clear();FAMILY.list=[];FAMILY.students=null;FAMILY.requests=null;FAMILY.query='';FAMILY.classFilter='';clearTahDom();S.needsHome=false;try{sessionStorage.removeItem('sipandai_token');}catch(e){}loginUI();return;}
   if(action==='switch-child'){clearTahDom();S.progress.lastKey='';PARENT_GRADE_UI.report=null;PARENT_GRADE_UI.key='';PARENT_GRADE_UI.period='ALL';++PARENT_GRADE_UI.requestId;S.childId=b.dataset.id;S.v2.assessmentId='';S.v2.taskId='';S.classId=(S.home.children.find(x=>x.id===S.childId)||{}).classId||S.classId;try{await loadHome();}catch(e){toast(e.message,true);}return;}
   if(action==='confirm-notice')return submitAction('confirmNotice',{noticeId:b.dataset.id});
   if(action==='publish-notice')return submitAction('publishNotice',{id:b.dataset.id});
@@ -1619,11 +1652,15 @@ async function loadTahfidz(refresh=false){
  try{
   if(parent){const detail=await cachedCall('tahStudentReport',{classId,studentId},refresh?0:25000);if(req!==TAH.request||S.view!=='tahfidz')return;TAH.detail=detail;$('#tah-main').innerHTML=tahParentMarkup(detail);return;}
   const period=TAH.period||(S.home?.serverDate||'').slice(0,7);
-  const {settings,klass}=await cachedCall('tahDashboard',{classId,period},refresh?0:45000);
+  const {settings,klass}=await fetchTahDashboard({classId,period},refresh?0:45000);
   if(req!==TAH.request||S.view!=='tahfidz'||S.classId!==classId)return;
   TAH.settings=settings;TAH.klass=klass;drawTahTeacher();
   if(['entry','students'].includes(TAH.tab))await tahLoadStudent(false);
- }catch(err){const h=$('#tah-main');if(h)h.innerHTML=`<div class="notice warning">Tidak dapat memuat Tahfidz: ${E(err.message)}. Pastikan upgradeDatabaseV36() telah dijalankan.</div>`;}
+ }catch(err){
+  console.error('SIPANDAI Tahfidz gagal dimuat:',err);
+  const h=$('#tah-main');
+  if(h)h.innerHTML=`<div class="notice warning"><b>Tahfidz belum berhasil dimuat.</b><div class="section-gap">${E(err.message)}</div><div class="actions"><button type="button" class="btn btn-outline btn-sm" data-action="tah-refresh">↻ Coba lagi</button></div></div>`;
+ }
 }
 function tahPrintPanel(){
  const students=S.home?.students||[];
@@ -1635,7 +1672,7 @@ function drawTahTeacher(){
  const period=TAH.period||(S.home?.serverDate||'').slice(0,7);
  const summary=`<div class="tah-summary-toolbar"><span class="small muted">Aktivitas bulan <b>${E(period)}</b></span><button class="btn btn-sm btn-outline" data-action="tah-refresh">↻ Perbarui</button></div>
  <div class="grid grid3 section-gap">${stat('Siswa dalam kelas',rows.length)}${stat('Target hafalan aktif',(TAH.settings?.targets||[]).length)}${stat('Sesi murojaah tercatat',rows.reduce((s,x)=>s+x.sessions,0))}</div>
- <div class="card section-gap"><div class="panel-title">Perkembangan seluruh siswa</div><div class="table-wrap"><table><thead><tr><th>Nama siswa</th><th>Capaian target</th><th>Murojaah</th><th>Hari aktif</th><th>Tindakan</th></tr></thead><tbody>${rows.map(x=>`<tr><td><b>${E(x.name)}</b><div class="small muted">${E(x.nis)}</div></td><td>${x.done} / ${x.target} ayat ${tahProgressBar(x.percentage)}</td><td>${x.sessions} sesi</td><td>${x.days} hari</td><td><div class="actions" style="margin:0"><button type="button" class="btn btn-sm btn-outline" data-action="tah-pick-student" data-id="${E(x.studentId)}">Lihat progres</button>${!role('KEPALA_SEKOLAH')?`<button type="button" class="btn btn-sm" data-action="tah-record-student" data-id="${E(x.studentId)}">+ Setoran</button>`:''}</div></td></tr>`).join('')||'<tr><td colspan="5">Belum ada siswa di kelas ini.</td></tr>'}</tbody></table></div></div>`;
+ <div class="card section-gap tah-overview-card"><div class="panel-title">Perkembangan seluruh siswa</div><div class="tah-student-summary" role="table" aria-label="Ringkasan hafalan dan murojaah seluruh siswa"><div class="tah-summary-head" role="row"><span role="columnheader">Nama siswa</span><span role="columnheader">Capaian hafalan</span><span role="columnheader">Murojaah</span></div>${rows.map(x=>`<div class="tah-summary-row" role="row"><div class="tah-summary-identity" role="rowheader"><b>${E(x.name)}</b><small>${E(x.nis)}</small></div><div class="tah-summary-hafalan" role="cell"><span class="tah-summary-count">${E(x.done)} / ${E(x.target)} <small>ayat</small></span>${tahProgressBar(x.percentage)}</div><div class="tah-summary-activity" role="cell"><span><strong>${E(x.sessions)}</strong> sesi</span><span><strong>${E(x.days)}</strong> hari</span></div></div>`).join('')||'<div class="tah-summary-empty">Belum ada siswa di kelas ini.</div>'}</div></div>`;
  const readonlyTargets=`<div class="card"><div class="panel-title">Target hafalan kelas</div><div class="stack">${(TAH.settings?.targets||[]).map(t=>`<div class="item"><b>${E(t.surahName)} · ${E(t.startAyah)}–${E(t.endAyah)}</b><div class="small muted">Semester ${E(t.semester)}</div></div>`).join('')||empty('Belum ada target kelas.')}</div></div>`;
  const canEdit=!role('KEPALA_SEKOLAH');
  const targetPanel=canEdit?`<div class="grid grid2">${tahTargetForm()}${tahTeacherForm()}</div>`:readonlyTargets;

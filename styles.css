@@ -545,3 +545,44 @@ html,body{min-height:100%;width:100%;}
  #sip-print-root .sip-att-compact-table tbody tr{break-inside:avoid;page-break-inside:avoid}
  #sip-print-root .sip-att-footer{font-size:6pt!important;margin-top:2mm!important;padding-top:1.2mm!important}
 }
+
+/* SIPANDAI v4.12.2 — Ringkasan Tahfidz tanpa gulir horizontal. */
+#tah-pane-overview .tah-overview-card{min-width:0}
+#tah-pane-overview .tah-student-summary{min-width:0;width:100%;border:1px solid var(--line);border-radius:11px;overflow:hidden}
+#tah-pane-overview .tah-summary-head,
+#tah-pane-overview .tah-summary-row{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(0,1.08fr) minmax(0,.72fr);align-items:center;column-gap:13px;min-width:0}
+#tah-pane-overview .tah-summary-head{background:#f1f7f3;border-bottom:1px solid var(--line);padding:9px 13px;color:#557469;font-size:11px;font-weight:750}
+#tah-pane-overview .tah-summary-row{padding:10px 13px;min-height:62px;background:#fff;border-bottom:1px solid var(--line)}
+#tah-pane-overview .tah-summary-row:nth-child(odd){background:#fcfefd}
+#tah-pane-overview .tah-summary-row:last-child{border-bottom:0}
+#tah-pane-overview .tah-summary-identity{min-width:0;overflow-wrap:anywhere;line-height:1.25}
+#tah-pane-overview .tah-summary-identity b{display:block;font-size:12.5px;font-weight:750}
+#tah-pane-overview .tah-summary-identity small{display:block;color:var(--muted);font-size:10px;margin-top:3px;overflow-wrap:anywhere}
+#tah-pane-overview .tah-summary-hafalan{min-width:0}
+#tah-pane-overview .tah-summary-count{display:block;white-space:nowrap;font-weight:700;font-size:12px}
+#tah-pane-overview .tah-summary-count small{font-size:10px;font-weight:450;color:var(--muted)}
+#tah-pane-overview .tah-summary-hafalan .progress-meter{height:6px;margin-top:6px}
+#tah-pane-overview .tah-summary-activity{min-width:0;font-size:11px;line-height:1.65;white-space:nowrap}
+#tah-pane-overview .tah-summary-activity span{display:block}
+#tah-pane-overview .tah-summary-activity strong{font-size:12px}
+#tah-pane-overview .tah-summary-empty{text-align:center;color:var(--muted);padding:20px 10px}
+@media(max-width:760px){
+ #tah-pane-overview .tah-overview-card{padding:12px 9px}
+ #tah-pane-overview .tah-summary-head,
+ #tah-pane-overview .tah-summary-row{grid-template-columns:minmax(0,1.55fr) minmax(0,1.05fr) minmax(0,.68fr);column-gap:7px}
+ #tah-pane-overview .tah-summary-head{padding:7px 8px;font-size:9px}
+ #tah-pane-overview .tah-summary-row{padding:8px;min-height:56px}
+ #tah-pane-overview .tah-summary-identity b{font-size:11px}
+ #tah-pane-overview .tah-summary-identity small{font-size:9px}
+ #tah-pane-overview .tah-summary-count{font-size:11px}
+ #tah-pane-overview .tah-summary-count small{font-size:9px}
+ #tah-pane-overview .tah-summary-hafalan .progress-meter{height:5px;margin-top:5px}
+ #tah-pane-overview .tah-summary-activity{font-size:10px}
+ #tah-pane-overview .tah-summary-activity strong{font-size:11px}
+}
+@media(max-width:350px){
+ #tah-pane-overview .tah-overview-card{padding-left:7px;padding-right:7px}
+ #tah-pane-overview .tah-summary-head,
+ #tah-pane-overview .tah-summary-row{column-gap:5px;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr) minmax(0,.65fr)}
+ #tah-pane-overview .tah-summary-activity{font-size:9px}
+}

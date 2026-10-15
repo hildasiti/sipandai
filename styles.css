@@ -211,3 +211,25 @@ html,body{min-height:100%;width:100%;}
  .print-main-grid #print-group-description{display:none}
  .print-main-grid #print-form{margin-top:9px}
 }
+
+/* SIPANDAI v4.4 — Konsistensi administrasi sekolah */
+.list-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin-top:10px}
+.list-card-grid>.item{min-width:0;background:#fcfefd}
+.list-card-grid .item-head{align-items:flex-start;flex-wrap:wrap}
+.list-card-grid .item-head>b{overflow-wrap:anywhere}
+.list-search{margin:8px 0 14px;max-width:520px}
+.list-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:15px;padding-top:14px;border-top:1px solid var(--line)}
+.user-edit-panel{background:#f2f9f5;border:1px solid #cbe5d7;border-radius:13px;padding:16px;margin:14px 0}
+.subject-map-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.subject-map-item{padding:12px 13px;border:1px solid var(--line);border-radius:12px;background:#fbfdfb;min-width:0}
+.subject-map-item .label{min-height:18px;font-size:13px;margin-bottom:7px}
+.subject-map-item select{min-height:40px;width:100%}
+.subject-map-footer{margin-top:14px;padding-top:13px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media(max-width:760px){
+  .list-card-grid,.subject-map-grid{grid-template-columns:1fr;gap:8px}
+  .user-edit-panel{padding:12px}
+  .subject-map-item{padding:10px 11px}
+  .subject-map-footer{align-items:stretch}
+  .subject-map-footer .btn{width:100%}
+  #user-panel .item .actions .btn{flex:1 1 auto}
+}

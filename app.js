@@ -1,4 +1,4 @@
-console.info('SIPANDAI v4.2 — Compact Mobile UI');
+console.info('SIPANDAI v4.4 — Pengelolaan Akun, Kelas, dan Siswa');
 'use strict';
 const S={token:'',user:null,home:null,view:'dashboard',classId:'',childId:'',additional:{},att:null,attEdit:false,attMode:'HARIAN',attDate:'',attMapel:'',sessionNo:'1',busy:false,menuCache:new Map(),needsHome:false,attRequest:0,learningTab:'journal'};
 try { S.token=sessionStorage.getItem('sipandai_token')||''; } catch(e) {}
@@ -138,7 +138,7 @@ async function submitAction(action,data,opt={}){
   try{
     busy(true);
     const res=await call(action,data);
-    if(['createUser','resetPassword','createClass','createSubject','addStudent','assignTeacher','linkParent','reviewRequest','requestLink','saveNotice','publishNotice','confirmNotice','saveBehavior','publishBehavior','saveAttendance'].includes(action)){
+    if(['createUser','updateUser','resetPassword','createClass','updateClass','createSubject','addStudent','saveSubjectOwners','assignTeacher','linkParent','reviewRequest','requestLink','saveNotice','publishNotice','confirmNotice','saveBehavior','publishBehavior','saveAttendance'].includes(action)){
       if(action!=='saveAttendance') S.needsHome=true;
       if(action==='saveAttendance')forgetMenuCache('attendance');
       if(['linkParent','resetPassword'].includes(action))forgetMenuCache('parents');
@@ -321,40 +321,54 @@ function downloadImportTemplate(){
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+text],{type:'text/csv;charset=utf-8'}));a.download='template_import_sipandai.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 
+/* SIPANDAI v4.4 — tab terpisah dan filter daftar siswa */
+const STUDENT_UI={tab:'list',query:'',page:1,pageSize:12};
+function studentTabs(){return `<nav class="module-tabs" aria-label="Pengelolaan siswa">${[['list','Daftar Siswa'],['create','Tambah / Edit Siswa'],['import','Impor Siswa']].map(([id,label])=>`<button type="button" class="module-tab ${STUDENT_UI.tab===id?'active':''}" data-action="student-tab" data-tab="${id}">${E(label)}</button>`).join('')}</nav>`;}
 function renderStudents(){
   if(!role('ADMIN','GURU_KELAS'))return;
-  const x=S.home,isAdmin=role('ADMIN');
-  let html=head('Data siswa','Kelola identitas dan daftar siswa pada kelas aktif.');
-  html+=`<div class="card"><div class="panel-title" id="student-title">Tambah siswa</div><form id="student-form"><input type="hidden" name="id" value=""><div class="form-grid"><div class="field"><label class="label">NIS</label><input name="nis" required maxlength="35" placeholder="Nomor induk siswa"></div><div class="field"><label class="label">Nama lengkap</label><input name="name" required maxlength="140" placeholder="Nama siswa"></div></div><div class="actions"><button class="btn btn-primary" type="submit">Simpan siswa</button><button type="button" class="btn" data-action="student-new">Batal edit / siswa baru</button></div><p class="hint">${isAdmin?'Perubahan NIS yang juga menjadi username orang tua akan memperbarui login terkait.':'Pengelolaan akun orang tua, penghubungan anak, dan reset password merupakan kewenangan Admin.'}</p></form></div>`;
-  html+=`<div class="card section-gap"><div class="panel-title">${isAdmin?'Impor Siswa + Akun Orang Tua':'Impor Data Siswa'}</div><p class="hint">Format dua kolom: <b>NIS,Nama Siswa</b>. Maksimal 100 siswa per proses. ${isAdmin?'Admin otomatis membuat akun wali untuk NIS baru <b>atau melengkapi akun wali siswa di kelas ini yang sebelumnya diimpor guru</b>. Username = NIS, password awal <b>sipandai123</b>. Relasi saudara kandung dikelola melalui menu Keluarga.':'Impor Guru Kelas hanya menambahkan siswa ke kelas aktif, <b>tanpa membuat akun atau relasi orang tua</b>.'}</p><div class="field"><label class="label">Unggah CSV (opsional)</label><input type="file" id="import-csv-file" accept=".csv,text/csv,text/plain"></div><div class="field"><label class="label">Atau tempel dari Excel / Google Sheets</label><textarea id="import-students-text" rows="5" placeholder="NIS,Nama Siswa&#10;10201,Ahmad Fauzan&#10;10202,Aisyah Zahra"></textarea></div><div class="actions"><button class="btn" type="button" data-action="import-template">Unduh contoh CSV</button><button class="btn btn-primary" type="button" data-action="import-students">${isAdmin?'Impor Siswa & Buat Akun':'Impor Data Siswa'}</button></div><div id="import-result" class="hint" aria-live="polite"></div></div>`;
-  html+=`<div class="card section-gap"><div class="panel-title">Siswa kelas ${E(className(x.classId))} <span class="pill">${x.students.length} siswa</span></div>${x.students.length?`<div class="table-wrap"><table><thead><tr><th>NIS</th><th>Nama siswa</th><th>Tindakan</th></tr></thead><tbody>${x.students.map(st=>`<tr><td>${E(st.nis)}</td><td><b>${E(st.name)}</b></td><td><button type="button" class="btn btn-sm" data-action="edit-student" data-id="${E(st.id)}">Edit siswa</button></td></tr>`).join('')}</tbody></table></div>`:empty('Belum ada siswa. Tambahkan siswa pertama.')}</div>`;
-  setContent(html);
+  let html=head('Siswa','Data siswa kelas '+className(S.classId)+'.')+studentTabs()+'<div id="student-panel"></div>';
+  setContent(html);paintStudentPanel();
+}
+function paintStudentPanel(){
+  const panel=$('#student-panel');if(!panel)return;
+  const isAdmin=role('ADMIN'),students=S.home?.students||[];
+  if(STUDENT_UI.tab==='create'){
+    panel.innerHTML=`<div class="card"><div class="panel-title" id="student-title">Tambah siswa</div><form id="student-form"><input type="hidden" name="id" value=""><div class="form-grid"><div class="field"><label class="label">NIS</label><input name="nis" required maxlength="35" placeholder="Nomor induk siswa"></div><div class="field"><label class="label">Nama lengkap</label><input name="name" required maxlength="140" placeholder="Nama siswa"></div></div><div class="actions"><button class="btn btn-primary" type="submit">Simpan siswa</button><button type="button" class="btn" data-action="student-new">Kosongkan</button></div><p class="hint">${isAdmin?'Siswa baru otomatis dibuatkan akun orang tua: username NIS, password awal sipandai123. Relasi keluarga disetujui otomatis.':'Guru Kelas hanya mengelola siswa; akun dan relasi orang tua dibuat Admin.'}</p></form><div id="credential-box"></div></div>`;
+  }else if(STUDENT_UI.tab==='import'){
+    panel.innerHTML=`<div class="card"><div class="panel-title">${isAdmin?'Impor Siswa & Akun Orang Tua':'Impor Data Siswa'}</div><p class="hint">CSV dua kolom: NIS,Nama Siswa (maksimal 100 siswa). ${isAdmin?'Akun orang tua dibuat otomatis, termasuk melengkapi akun siswa yang sudah diimpor Guru Kelas.':'Akun dan relasi orang tua hanya dikelola Admin.'}</p><div class="field"><label class="label">Unggah CSV (opsional)</label><input type="file" id="import-csv-file" accept=".csv,text/csv,text/plain"></div><div class="field"><label class="label">Atau tempel dari Excel / Google Sheets</label><textarea id="import-students-text" rows="5" placeholder="NIS,Nama Siswa&#10;10201,Ahmad Fauzan&#10;10202,Aisyah Zahra"></textarea></div><div class="actions"><button class="btn" type="button" data-action="import-template">Unduh contoh CSV</button><button class="btn btn-primary" type="button" data-action="import-students">${isAdmin?'Impor siswa & akun':'Impor siswa'}</button></div><div id="import-result" class="hint" aria-live="polite"></div></div>`;
+  }else{
+    panel.innerHTML=`<div class="card"><div class="row-between wrap"><div class="panel-title">Daftar siswa <span class="pill">${students.length}</span></div><button type="button" class="btn btn-sm btn-primary" data-action="student-add">+ Tambah siswa</button></div><div class="field list-search"><label class="label" for="student-search">Cari nama siswa atau NIS</label><input id="student-search" type="search" autocomplete="off" placeholder="Ketik nama / NIS..." value="${E(STUDENT_UI.query)}"></div><div id="student-list-results"></div></div>`;
+    paintStudentList();
+  }
+}
+function paintStudentList(){
+  const host=$('#student-list-results');if(!host)return;
+  const query=String(STUDENT_UI.query).toLocaleLowerCase('id').trim();
+  const rows=(S.home?.students||[]).filter(x=>!query||[x.name,x.nis].some(v=>String(v||'').toLocaleLowerCase('id').includes(query)));
+  const pages=Math.max(1,Math.ceil(rows.length/STUDENT_UI.pageSize));STUDENT_UI.page=Math.min(pages,Math.max(1,STUDENT_UI.page));
+  const start=(STUDENT_UI.page-1)*STUDENT_UI.pageSize;
+  host.innerHTML=`<p class="small muted">${rows.length} siswa ditemukan</p><div class="list-card-grid">${rows.slice(start,start+STUDENT_UI.pageSize).map(x=>`<div class="item"><b>${E(x.name)}</b><div class="small muted">NIS ${E(x.nis)}</div><div class="actions"><button type="button" class="btn btn-sm btn-outline" data-action="edit-student" data-id="${E(x.id)}">Edit siswa</button></div></div>`).join('')||empty('Tidak ada siswa yang cocok.')}</div>${pages>1?`<div class="list-pagination"><button type="button" class="btn btn-sm" data-action="student-page" data-page="${STUDENT_UI.page-1}" ${STUDENT_UI.page===1?'disabled':''}>Sebelumnya</button><span class="small muted">Halaman ${STUDENT_UI.page} / ${pages}</span><button type="button" class="btn btn-sm" data-action="student-page" data-page="${STUDENT_UI.page+1}" ${STUDENT_UI.page===pages?'disabled':''}>Berikutnya</button></div>`:''}`;
 }
 function editStudentForm(id){
-  const student=(S.home?.students||[]).find(x=>x.id===id),f=$('#student-form');if(!student||!f)return;
-  f.elements.namedItem('id').value=student.id;
-  f.elements.namedItem('nis').value=student.nis;
-  f.elements.namedItem('name').value=student.name;
-  const title=$('#student-title');if(title)title.textContent='Edit siswa: '+student.name;
-  f.scrollIntoView({behavior:'smooth',block:'center'});
+  const student=(S.home?.students||[]).find(x=>x.id===id);if(!student)return;
+  STUDENT_UI.tab='create';renderStudents();const f=$('#student-form');if(!f)return;
+  f.elements.namedItem('id').value=student.id;f.elements.namedItem('nis').value=student.nis;f.elements.namedItem('name').value=student.name;
+  $('#student-title').textContent='Edit siswa: '+student.name;
+  $('#student-panel')?.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
-function resetStudentForm(){const f=$('#student-form');if(!f)return;f.reset();f.elements.namedItem('id').value='';const title=$('#student-title');if(title)title.textContent='Tambah siswa';}
+function resetStudentForm(){const f=$('#student-form');if(!f)return;f.reset();f.elements.namedItem('id').value='';$('#student-title').textContent='Tambah siswa';}
+
+/* Satu tombol simpan seluruh mapel per kelas. */
 async function renderTeachers(){
-  if(!role('ADMIN','GURU_KELAS'))return;
-  const staff=(S.home.staff||[]).filter(x=>x.active==='YES');
-  const c=S.home.classes.find(x=>x.id===S.classId);
-  const owner=(staff.find(t=>t.id===c?.teacherId)||{});
-  let html=head('Pembagian pengampu kelas','Guru Kelas menentukan mapel miliknya dan mapel Guru Mapel. Akun Guru Mapel dibuat Admin sekali saja.');
-  if(!c){setContent(html+empty('Silakan pilih kelas yang akan diatur.'));return;}
-  html+=`<div class="notice">Kelas <b>${E(c.name)}</b> — Guru Kelas: <b>${E(owner.name||'Belum ada')}</b>. Untuk tiap mapel pilih pengampu lalu klik <b>Simpan</b>. Satu mapel memiliki satu pengampu aktif; guru mapel dapat mengajar banyak kelas.</div>`;
-  const assigned=(S.home.classSubjects||[]);
-  const teachers=staff.filter(t=>t.role==='GURU_MAPEL');
-  html+=`<div class="card section-gap"><div class="panel-title">Pemetaan mata pelajaran <span class="pill">${assigned.length} mapel</span></div><div class="stack">`+assigned.map(sub=>{
-    const isOwner=sub.teacherId===c.teacherId;
-    return `<form class="item" id="owner-${E(sub.id)}" data-subject-owner="${E(sub.id)}"><div class="form-grid"><div class="field"><b>${E(sub.name)}</b><div class="small muted">${isOwner?'Diampu Guru Kelas':'Diampu Guru Mapel'}</div></div><div class="field"><label class="label">Pengampu</label><select name="teacherId"><option value="" ${isOwner?'selected':''}>Guru Kelas — ${E(owner.name||'Pemilik kelas')}</option>${teachers.map(t=>`<option value="${E(t.id)}" ${sub.teacherId===t.id?'selected':''}>${E(t.name)}</option>`).join('')}</select></div></div><button class="btn btn-sm btn-primary" type="submit">Simpan pengampu</button><span class="save-status" aria-live="polite"></span></form>`;
-  }).join('')+`</div></div>`;
-  if(!teachers.length)html+=`<div class="notice warning section-gap">Belum ada akun Guru Mapel aktif. Admin perlu membuatnya melalui menu Akun Guru. Guru Kelas tetap bisa mengampu seluruh mapel sampai ditugaskan.</div>`;
-  setContent(html);
+ if(!role('ADMIN','GURU_KELAS'))return;
+ const staff=(S.home.staff||[]).filter(x=>x.active==='YES');
+ const c=S.home.classes.find(x=>x.id===S.classId),owner=staff.find(t=>t.id===c?.teacherId)||{};
+ let html=head('Guru Mapel','Atur pengampu seluruh mapel dalam satu formulir.');
+ if(!c){setContent(html+empty('Pilih kelas untuk diatur.'));return;}
+ const teachers=staff.filter(t=>t.role==='GURU_MAPEL'),assigned=S.home.classSubjects||[];
+ html+=`<div class="card"><div class="row-between wrap"><div><b>${E(c.name)}</b><div class="small muted">Guru Kelas: ${E(owner.name||'Belum ada')}</div></div><span class="pill">${assigned.length} mapel</span></div><form id="subject-owners-form" class="section-gap"><div class="subject-map-grid">${assigned.map(sub=>`<div class="subject-map-item"><label class="label" for="mapel-${E(sub.id)}">${E(sub.name)}</label><select id="mapel-${E(sub.id)}" class="subject-owner-choice" data-mapel-id="${E(sub.id)}"><option value="" ${sub.teacherId===c.teacherId?'selected':''}>Guru Kelas — ${E(owner.name||'Pemilik kelas')}</option>${teachers.map(t=>`<option value="${E(t.id)}" ${sub.teacherId===t.id?'selected':''}>${E(t.name)}</option>`).join('')}</select></div>`).join('')}</div><div class="subject-map-footer"><span class="small muted" id="subject-owner-status">Perubahan belum disimpan.</span><button type="submit" class="btn btn-primary">Simpan Semua Pengampu</button></div></form></div>`;
+ if(!teachers.length)html+=`<div class="notice warning section-gap">Belum ada Guru Mapel aktif. Tambahkan melalui menu Akun Guru.</div>`;
+ setContent(html);
 }
 /* SIPANDAI v4.1 — manajemen keluarga khusus Admin; pencarian/filter/paginasi dilakukan
  * langsung di browser setelah satu kali pemuatan daftar. Tidak ada request setiap tombol diketik. */
@@ -425,8 +439,47 @@ async function loadFamilyRequests(force=false){const area=$('#family-panel');if(
 }
 async function reloadFamilyList(){FAMILY.list=[];forgetMenuCache('parents');const area=$('#family-panel');if(area)area.innerHTML=loader();try{FAMILY.list=await cachedCall('parents',{},0);if(S.view==='parents')paintFamilyPanel();}catch(e){toast(e.message,true);}}
 
-async function renderUsers(){if(!role('ADMIN'))return;try{const users=(S.home.staff||[]);S.additional.users=users;const html=head('Pengguna sekolah','Buat akun guru terlebih dahulu sebelum membuat kelas.')+`<div class="grid grid2"><div class="card"><div class="panel-title">Buat akun sekolah</div><form id="user-form"><div class="field"><label class="label">Nama pengguna</label><input name="fullName" required></div><div class="field"><label class="label">Username</label><input name="username" required placeholder="Contoh: guru.nur" pattern="[a-zA-Z0-9._-]{3,90}"></div><div class="field"><label class="label">Role</label><select name="role"><option value="GURU_KELAS">Guru Kelas</option><option value="GURU_MAPEL">Guru Mapel</option><option value="KEPALA_SEKOLAH">Kepala Sekolah</option></select></div><button class="btn btn-primary" type="submit">Buat akun</button></form></div><div class="card"><div class="panel-title">Daftar pengguna</div><div class="stack">${users.map(u=>`<div class="item"><div class="item-head"><b>${E(u.fullName)}</b><span class="pill">${E(u.role.replaceAll('_',' '))}</span></div><p class="small muted">${E(u.username)} · ${E(u.active==='YES'?'Aktif':'Nonaktif')}</p><div class="actions"><button class="btn btn-sm btn-outline" data-action="reset-user" data-id="${E(u.id)}">Reset password</button></div></div>`).join('')}</div></div></div><div id="credential-box"></div>`;setContent(html);}catch(e){toast(e.message,true);}}
-async function renderClasses(){if(!role('ADMIN'))return;try{const teachers=S.home.staff||[];const roomTeachers=teachers.filter(t=>t.role==='GURU_KELAS');let html=head('Kelas & mata pelajaran','Buat kelas setelah akun Guru Kelas tersedia.')+`<div class="grid grid2"><div class="card"><div class="panel-title">Buat kelas</div><form id="class-form"><div class="field"><label class="label">Nama kelas</label><input name="name" required placeholder="Contoh: 5A"></div><div class="field"><label class="label">Guru Kelas pemilik</label><select name="teacherId" required>${fillOptions(roomTeachers)}</select></div><button class="btn btn-primary" type="submit">Tambah kelas</button></form></div><div class="card"><div class="panel-title">Tambah mata pelajaran</div><form id="subject-form"><div class="field"><label class="label">Nama mata pelajaran</label><input name="name" required placeholder="Contoh: Bahasa Sunda"></div><button class="btn btn-primary" type="submit">Simpan mapel</button></form></div></div><div class="card section-gap"><div class="panel-title">Kelas yang tersedia</div><div class="stack">${S.home.classes.map(x=>`<div class="item row-between"><b>${E(x.name)}</b><span class="pill green">Aktif</span></div>`).join('')||empty('Belum ada kelas.')}</div></div>`;setContent(html);}catch(e){toast(e.message,true);}}
+/* SIPANDAI v4.4 — Pengelolaan Akun Guru & Kelas */
+const USER_UI={tab:'list',query:'',page:1,pageSize:12,editingId:''};
+function staffRows(){return (S.home?.staff||[]).filter(x=>['GURU_KELAS','GURU_MAPEL','KEPALA_SEKOLAH'].includes(x.role));}
+function userTabs(){return `<nav class="module-tabs" aria-label="Kelola akun guru">${[['list','Daftar Akun Guru'],['create','Buat Akun Guru']].map(([id,label])=>`<button type="button" class="module-tab ${USER_UI.tab===id?'active':''}" data-action="user-tab" data-tab="${id}">${E(label)}</button>`).join('')}</nav>`;}
+async function renderUsers(){if(!role('ADMIN'))return;setContent(head('Akun Guru','Kelola nama, role, dan password akun sekolah.')+userTabs()+'<div id="user-panel"></div>');paintUserPanel();}
+function paintUserPanel(){
+ const host=$('#user-panel');if(!host)return;
+ if(USER_UI.tab==='create')host.innerHTML=`<div class="card"><div class="panel-title">Buat Akun Guru</div><form id="user-form"><div class="form-grid"><div class="field"><label class="label">Nama guru / pegawai</label><input name="fullName" required maxlength="120"></div><div class="field"><label class="label">Username</label><input name="username" required minlength="3" maxlength="90" pattern="(?:[A-Za-z0-9._]|-){3,90}" placeholder="Contoh: guru.nur"></div><div class="field"><label class="label">Role</label><select name="role"><option value="GURU_KELAS">Guru Kelas</option><option value="GURU_MAPEL">Guru Mapel</option><option value="KEPALA_SEKOLAH">Kepala Sekolah</option></select></div></div><div class="actions"><button class="btn btn-primary" type="submit">Buat Akun Guru</button></div></form><div id="credential-box"></div></div>`;
+ else host.innerHTML=`<div class="card"><div class="row-between wrap"><div class="panel-title">Daftar Akun Guru <span class="pill">${staffRows().length}</span></div><button class="btn btn-sm btn-primary" type="button" data-action="user-tab" data-tab="create">+ Akun Guru</button></div><div class="field list-search"><label class="label" for="user-search">Cari nama, username, atau role</label><input type="search" id="user-search" autocomplete="off" value="${E(USER_UI.query)}" placeholder="Ketik nama guru..."></div><div id="user-edit-slot"></div><div id="user-list-results"></div><div id="credential-box"></div></div>`;
+ if(USER_UI.tab==='list'){paintUserList();if(USER_UI.editingId)paintUserEdit();}
+}
+function paintUserList(){
+ const host=$('#user-list-results');if(!host)return;
+ const q=USER_UI.query.trim().toLocaleLowerCase('id');
+ const all=staffRows().filter(x=>!q||[x.fullName,x.username,x.role].some(t=>String(t||'').toLocaleLowerCase('id').includes(q)));
+ const pages=Math.max(1,Math.ceil(all.length/USER_UI.pageSize));USER_UI.page=Math.min(pages,Math.max(1,USER_UI.page));const begin=(USER_UI.page-1)*USER_UI.pageSize;
+ host.innerHTML=`<p class="small muted">${all.length} akun ditemukan</p><div class="list-card-grid">${all.slice(begin,begin+USER_UI.pageSize).map(x=>`<div class="item"><div class="item-head"><b>${E(x.fullName)}</b><span class="pill">${E(x.role.replaceAll('_',' '))}</span></div><div class="small muted">${E(x.username)} · ${x.active==='YES'?'Aktif':'Nonaktif'}</div><div class="actions"><button class="btn btn-sm btn-outline" data-action="edit-user" data-id="${E(x.id)}">Edit akun</button><button class="btn btn-sm" data-action="reset-user" data-id="${E(x.id)}">Reset password</button></div></div>`).join('')||empty('Tidak ada akun guru yang cocok.')}</div>${pages>1?`<div class="list-pagination"><button class="btn btn-sm" type="button" data-action="user-page" data-page="${USER_UI.page-1}" ${USER_UI.page===1?'disabled':''}>Sebelumnya</button><span class="small muted">Halaman ${USER_UI.page}/${pages}</span><button class="btn btn-sm" type="button" data-action="user-page" data-page="${USER_UI.page+1}" ${USER_UI.page===pages?'disabled':''}>Berikutnya</button></div>`:''}`;
+}
+function paintUserEdit(){
+ const slot=$('#user-edit-slot');if(!slot)return;
+ const target=staffRows().find(x=>x.id===USER_UI.editingId);
+ if(!target){slot.innerHTML='';return;}
+ slot.innerHTML=`<div class="user-edit-panel"><div class="panel-title">Edit Akun Guru</div><form id="user-edit-form"><input type="hidden" name="userId" value="${E(target.id)}"><div class="form-grid"><div class="field"><label class="label">Nama lengkap</label><input name="fullName" maxlength="120" required value="${E(target.fullName)}"></div><div class="field"><label class="label">Username</label><input name="username" minlength="3" maxlength="90" required pattern="(?:[A-Za-z0-9._]|-){3,90}" value="${E(target.username)}"></div><div class="field"><label class="label">Role</label><select name="role">${[['GURU_KELAS','Guru Kelas'],['GURU_MAPEL','Guru Mapel'],['KEPALA_SEKOLAH','Kepala Sekolah']].map(([id,name])=>`<option value="${id}" ${target.role===id?'selected':''}>${name}</option>`).join('')}</select></div></div><p class="hint">Perubahan nama/username/role mengakhiri sesi akun tersebut. Jika guru masih menjadi pemilik kelas atau pengampu, pindahkan penugasannya dahulu sebelum mengubah role.</p><div class="actions"><button class="btn btn-primary" type="submit">Simpan Perubahan</button><button class="btn" type="button" data-action="cancel-edit-user">Batal</button></div></form></div>`;
+ slot.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+async function renderClasses(){
+ if(!role('ADMIN'))return;
+ const teachers=(S.home.staff||[]).filter(x=>x.role==='GURU_KELAS'&&x.active==='YES');
+ const opts=(selected='')=>teachers.map(x=>`<option value="${E(x.id)}" ${x.id===selected?'selected':''}>${E(x.fullName)}</option>`).join('');
+ let html=head('Kelas & Mapel','Kelola kelas, guru pemilik, dan mata pelajaran.')+`<div class="grid grid2"><div class="card"><div class="panel-title" id="class-title">Tambah kelas</div><form id="class-form"><input type="hidden" name="id" value=""><div class="field"><label class="label">Nama kelas</label><input name="name" maxlength="70" required placeholder="Contoh: 5A"></div><div class="field"><label class="label">Guru Kelas pemilik</label><select name="teacherId" required>${opts()}</select></div><div class="actions"><button class="btn btn-primary" id="class-submit" type="submit">Tambah kelas</button><button class="btn" type="button" data-action="class-new">Batal edit</button></div></form></div><div class="card"><div class="panel-title">Tambah mata pelajaran</div><form id="subject-form"><div class="field"><label class="label">Nama mata pelajaran</label><input name="name" required maxlength="110" placeholder="Contoh: Bahasa Sunda"></div><button class="btn btn-primary" type="submit">Simpan Mapel</button></form></div></div>`;
+ html+=`<div class="card section-gap"><div class="panel-title">Daftar kelas <span class="pill">${S.home.classes.length}</span></div><div class="list-card-grid">${S.home.classes.map(c=>`<div class="item"><div class="item-head"><b>${E(c.name)}</b><span class="pill green">Aktif</span></div><p class="small muted">Guru Kelas: ${E(teachers.find(x=>x.id===c.teacherId)?.fullName||'Belum ditentukan')}</p><div class="actions"><button type="button" class="btn btn-sm btn-outline" data-action="edit-class" data-id="${E(c.id)}">Edit kelas & pemilik</button></div></div>`).join('')||empty('Belum ada kelas.')}</div></div>`;
+ setContent(html);
+}
+function editClassForm(id){
+ const c=(S.home.classes||[]).find(x=>x.id===id),f=$('#class-form');if(!c||!f)return;
+ f.elements.namedItem('id').value=c.id;f.elements.namedItem('name').value=c.name;f.elements.namedItem('teacherId').value=c.teacherId;
+ $('#class-title').textContent='Edit kelas '+c.name;$('#class-submit').textContent='Simpan Perubahan';
+ f.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function resetClassForm(){const f=$('#class-form');if(!f)return;f.reset();f.elements.namedItem('id').value='';$('#class-title').textContent='Tambah kelas';$('#class-submit').textContent='Tambah kelas';}
+
 function renderSettings(){setContent(head('Pengaturan akun','Ganti password secara berkala untuk melindungi informasi siswa.')+`<div class="card" style="max-width:550px"><div class="panel-title">Keamanan akun</div><div class="notice">Username: <b>${E(S.user.username)}</b>. Sesi akan berakhir setelah password berhasil diganti.</div><div class="section-gap">${changePasswordForm()}</div></div>`);}
 async function readFile(file){if(!file)return null;if(file.size>3*1024*1024)throw new Error('File melebihi 3 MB.');const allowed=['image/jpeg','image/png','application/pdf'];if(!allowed.includes(file.type))throw new Error('File harus JPG, PNG, atau PDF.');const data=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(file);});return{name:file.name,mime:file.type,data};}
 async function openBehaviorFile(id){try{toast('Menyiapkan dokumen...');const d=await call('getBehaviorFile',{behaviorId:id});const binary=atob(d.base64),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);const obj=URL.createObjectURL(new Blob([bytes],{type:d.mime}));const a=document.createElement('a');a.href=obj;a.download=d.name||'dokumen';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(obj),20000);}catch(e){toast(e.message,true);}}
@@ -682,7 +735,12 @@ document.addEventListener('invalid',ev=>{
 document.addEventListener('submit',async ev=>{
   const f=ev.target;const formId=f?.getAttribute?.('id');if(!formId)return;ev.preventDefault();if(S.busy){toast('Sedang menyimpan data sebelumnya. Tunggu sebentar.');return;}
   const d=fd(f);
-  if(f.hasAttribute('data-subject-owner')){const id=f.getAttribute('data-subject-owner');const data={classId:S.classId,mapelId:id,teacherId:fd(f).teacherId};try{busy(true);const r=await call('setSubjectOwner',data);if(r?.ok){toast('Pengampu mata pelajaran berhasil disimpan.');S.menuCache.clear();await loadHome();}}catch(err){toast('Gagal menyimpan pengampu: '+err.message,true);}finally{busy(false);}return;}
+  if(formId==='subject-owners-form'){
+    const owners=[...f.querySelectorAll('[data-mapel-id]')].map(x=>({mapelId:x.dataset.mapelId,teacherId:x.value}));
+    try{busy(true);const result=await call('saveSubjectOwners',{classId:S.classId,owners});toast('Pengampu berhasil disimpan ('+(result.changed||0)+' perubahan).');S.needsHome=true;S.menuCache.clear();await loadHome();}
+    catch(err){toast('Gagal menyimpan pengampu: '+err.message,true);}
+    finally{busy(false);}return;
+  }
   if(formId==='progress-note-form')return saveProgressForm(f);
   if(formId==='journal-form')return v2save('saveJournal',{...d,classId:S.classId});
   if(formId==='assessment-form'){const d=fd(f);if(f.elements.mapelId.disabled)d.mapelId=f.elements.mapelId.value;return v2save('saveAssessment',{...d,classId:S.classId});}
@@ -707,7 +765,7 @@ document.addEventListener('submit',async ev=>{
   }
   if(formId==='review-form'){const d=fd(f);const res=await v2save('reviewSubmission',{...d,taskId:f.dataset.id,studentId:f.dataset.student},{refresh:false});if(res)loadTaskDetail(f.dataset.id,f.dataset.student);return;}
   if(formId==='task-comment-form'){const d=fd(f);const res=await v2save('commentTask',{...d,taskId:f.dataset.id,studentId:f.dataset.student},{refresh:false});if(res)loadTaskDetail(f.dataset.id,f.dataset.student);return;}
-  if(formId==='login-form') {try{busy(true);const loginStarted=Date.now();const r=await call('login',{...d,withHome:true});S.token=r.token;try{sessionStorage.setItem('sipandai_token',S.token);}catch(e){}S.user=r.user;S.attMode=r.user.role==='GURU_MAPEL'?'MAPEL':'HARIAN';S.attDate='';S.attMapel='';S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';S.menuCache.clear();clearTahDom();S.view='dashboard';S.learningTab=r.user.role==='ORANG_TUA'?'assessments':'journal';
+  if(formId==='login-form') {try{busy(true);const loginStarted=Date.now();const r=await call('login',{...d,withHome:true});S.token=r.token;try{sessionStorage.setItem('sipandai_token',S.token);}catch(e){}S.user=r.user;S.attMode=r.user.role==='GURU_MAPEL'?'MAPEL':'HARIAN';S.attDate='';S.attMapel='';S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';S.menuCache.clear();USER_UI.tab='list';USER_UI.query='';USER_UI.editingId='';STUDENT_UI.tab='list';STUDENT_UI.query='';clearTahDom();S.view='dashboard';S.learningTab=r.user.role==='ORANG_TUA'?'assessments':'journal';
    if(r.user.mustChangePassword)passwordUI();
    else if(r.home){
      S.home=r.home;S.user=r.home.user;S.needsHome=false;S.classId=r.home.classId;S.childId=r.home.currentChild?.id||'';
@@ -715,10 +773,32 @@ document.addEventListener('submit',async ev=>{
    }else {await loadHome();prefetchTodayAttendance();}
    console.info('SIPANDAI: login & halaman awal '+(Date.now()-loginStarted)+' ms (termasuk respons jaringan)',r.perf||'');}catch(e){toast(e.message,true);}finally{busy(false);}return;}
   if(formId==='change-password-form'){const r=await submitAction('changePassword',d,{refresh:false});if(r?.ok){S.token='';try{sessionStorage.removeItem('sipandai_token');}catch(e){}loginUI();toast('Password diganti. Silakan login dengan password baru.');}return;}
-  if(formId==='user-form')return submitAction('createUser',d,{credentials:true,refresh:false});
-  if(formId==='class-form')return submitAction('createClass',d);
+  if(formId==='user-form'){
+    const r=await submitAction('createUser',d,{credentials:false,message:false,refresh:false});
+    if(r){S.home.staff.push({id:r.id,username:r.username,fullName:r.fullName,name:r.fullName,role:r.role,active:'YES'});toast('Akun Guru berhasil dibuat. Simpan kredensialnya.');showCredential(r);}
+    return;
+  }
+  if(formId==='user-edit-form'){
+    const r=await submitAction('updateUser',d,{refresh:false});
+    if(r){S.home.staff=S.home.staff.map(x=>x.id===r.user.id?{...x,...r.user,name:r.user.fullName}:x);USER_UI.editingId='';paintUserPanel();toast('Akun diperbarui. Pemilik perlu login kembali.');}
+    return;
+  }
+  if(formId==='class-form'){
+    const result=await submitAction(d.id?'updateClass':'createClass',d);
+    if(result?.reassigned)toast('Guru Kelas dan '+result.reassigned+' penugasan mapel telah disesuaikan.');return;
+  }
   if(formId==='subject-form')return submitAction('createSubject',d);
-  if(formId==='student-form'){const updating=!!d.id;const r=await submitAction(updating?'updateStudent':'addStudent',{...d,classId:S.classId});if(r?.updatedParentLogin)toast('NIS dan username akun orang tua terkait telah diperbarui oleh Admin.');return;}
+  if(formId==='student-form'){
+    const updating=!!d.id;
+    const r=await submitAction(updating?'updateStudent':'addStudent',{...d,classId:S.classId},{refresh:false});
+    if(r){
+      if(r.createdParents)await sipAlert('Akun wali dibuat otomatis. Username: '+r.parentUsername+'; password awal: '+r.password+'. Sampaikan secara pribadi kepada wali.',{title:'Kredensial akun orang tua'});
+      if(r.updatedParentLogin)toast('NIS dan username akun wali terkait diperbarui.');
+      S.needsHome=true;FAMILY.list=[];forgetMenuCache('parents');
+      await loadHome();
+    }
+    return;
+  }
   if(formId==='assign-form')return submitAction('assignTeacher',{...d,classId:S.classId});
   if(formId==='link-parent-form'){if(!role('ADMIN'))return;const r=await submitAction('linkParent',d,{refresh:false});if(r){FAMILY.tab='list';FAMILY.query='';FAMILY.page=1;await reloadFamilyList();}return;}
   if(formId==='request-link-form')return submitAction('requestLink',d,{refresh:false});
@@ -793,6 +873,15 @@ document.addEventListener('click',async ev=>{
     paintFamilyPanel();return;
   }
   if(action==='family-page'){FAMILY.page=Number(b.dataset.page)||1;paintFamilyList();return;}
+  if(action==='user-tab'){USER_UI.tab=b.dataset.tab;USER_UI.editingId='';renderUsers();return;}
+  if(action==='edit-user'){USER_UI.editingId=b.dataset.id;paintUserEdit();return;}
+  if(action==='cancel-edit-user'){USER_UI.editingId='';paintUserEdit();return;}
+  if(action==='user-page'){USER_UI.page=Number(b.dataset.page)||1;paintUserList();return;}
+  if(action==='student-tab'){STUDENT_UI.tab=b.dataset.tab;renderStudents();return;}
+  if(action==='student-add'){STUDENT_UI.tab='create';renderStudents();return;}
+  if(action==='student-page'){STUDENT_UI.page=Number(b.dataset.page)||1;paintStudentList();return;}
+  if(action==='edit-class'){editClassForm(b.dataset.id);return;}
+  if(action==='class-new'){resetClassForm();return;}
   if(action==='import-students'){await importStudentBatch();return;}
   if(action==='import-template'){downloadImportTemplate();return;}
   if(action==='edit-student'){editStudentForm(b.dataset.id);return;}
@@ -853,6 +942,8 @@ document.addEventListener('click',async ev=>{
   if(action==='copy-credential'){try{await navigator.clipboard.writeText(b.dataset.value);toast('Kredensial disalin. Sampaikan secara pribadi.');}catch(e){toast('Gagal menyalin otomatis. Silakan salin teks kredensial.',true);}return;}
 });
 document.addEventListener('input',ev=>{
+ if(ev.target.id==='user-search'){USER_UI.query=ev.target.value;USER_UI.page=1;paintUserList();return;}
+ if(ev.target.id==='student-search'){STUDENT_UI.query=ev.target.value;STUDENT_UI.page=1;paintStudentList();return;}
  if(ev.target.id==='family-search'){FAMILY.query=ev.target.value;FAMILY.page=1;paintFamilyList();}
  if(ev.target.id==='family-parent-query'){FAMILY.parentQuery=ev.target.value;FAMILY.selectedParentId='';updateFamilyParentChoices();}
 });
@@ -860,7 +951,7 @@ document.addEventListener('change',ev=>{
  if(ev.target.id==='family-class'){FAMILY.classFilter=ev.target.value;FAMILY.page=1;paintFamilyList();return;}
  if(ev.target.id==='family-link-class'){FAMILY.linkClassId=ev.target.value;void updateFamilyStudentChoices();return;}
  if(ev.target.id==='family-parent-select'){FAMILY.selectedParentId=ev.target.value;return;}
- if(ev.target.id==='progress-student'){S.progress.studentId=ev.target.value;loadProgress();return;}if(ev.target.id==='task-pick-student'){loadTaskDetail(S.v2.taskId,ev.target.value);return;}if(ev.target.id==='switch-class'){clearTahDom();S.progress.lastKey='';S.classId=ev.target.value;S.v2.assessmentId='';S.v2.taskId='';S.attMapel='';S.att=null;S.attEdit=false;loadHome().catch(e=>toast(e.message,true));}if(ev.target.id==='att-mode'){S.attMode=ev.target.value;S.att=null;S.attEdit=false;renderAttendance();}});
+ if(ev.target.id==='progress-student'){S.progress.studentId=ev.target.value;loadProgress();return;}if(ev.target.id==='task-pick-student'){loadTaskDetail(S.v2.taskId,ev.target.value);return;}if(ev.target.id==='switch-class'){clearTahDom();S.progress.lastKey='';S.classId=ev.target.value;S.v2.assessmentId='';S.v2.taskId='';S.attMapel='';S.att=null;S.attEdit=false;setContent(head('Menyiapkan kelas', 'Memuat data dan pengampu kelas yang dipilih…')+loader());loadHome().catch(e=>toast(e.message,true));}if(ev.target.id==='att-mode'){S.attMode=ev.target.value;S.att=null;S.attEdit=false;renderAttendance();}});
 (async()=>{if(!S.token){loginUI();return;}try{await loadHome();prefetchTodayAttendance();}catch(e){S.token='';try{sessionStorage.removeItem('sipandai_token');}catch(x){}loginUI();toast('Sesi berakhir. Silakan login kembali.',true);}})();
 
 /* SIPANDAI v3.5: laporan dan cetak via browser; ekspor tabel ke CSV kompatibel Excel. */

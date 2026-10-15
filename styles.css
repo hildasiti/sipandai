@@ -294,3 +294,47 @@ html,body{min-height:100%;width:100%;}
  .assess-modal-footer .actions .btn{flex:1}
 }
 @media(max-width:390px){.assess-filters{grid-template-columns:1fr 1fr;gap:7px}.assess-filters .field:first-child{grid-column:1/-1}.assess-list-item{padding:11px}}
+
+/* SIPANDAI v4.7 — editor nilai berbaris ringkas, catatan dibuka bila diperlukan */
+.assess-score-list{padding:5px 18px 12px}
+.assess-score-row{display:grid;grid-template-columns:minmax(0,1fr) 82px 32px;column-gap:10px;row-gap:5px;align-items:center;padding:6px 0;border-bottom:1px solid #eaf0ec;min-height:49px}
+.assess-score-student{min-width:0;gap:8px}
+.assess-score-identity{min-width:0;display:flex;flex-direction:column;gap:1px}
+.assess-score-identity b{font-size:12px;line-height:1.3;font-weight:750;color:#18342b;overflow-wrap:anywhere}
+.assess-score-nis{color:#798b82;font-size:10px;line-height:1.15;font-variant-numeric:tabular-nums}
+.assess-score-num{width:25px;height:25px;font-size:10px}
+.assess-score-row .assess-score-field{grid-column:2;grid-row:1;min-width:0}
+.assess-score-row .assess-score-field input{width:100%;min-height:35px;height:35px;padding:5px 8px;text-align:center;font-size:16px;font-weight:650;border-radius:9px;font-variant-numeric:tabular-nums}
+.assess-score-row .score-input::-webkit-inner-spin-button,.assess-score-row .score-input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.assess-score-row .score-input{-moz-appearance:textfield;appearance:textfield}
+.assess-note-toggle{grid-column:3;grid-row:1;display:grid;place-items:center;padding:0;width:32px;height:34px;border:1px solid #deebe4;border-radius:9px;background:#f3f8f5;color:#456b5d;font-size:17px;cursor:pointer}
+.assess-note-toggle:hover,.assess-note-toggle.is-open{background:#e6f2eb;border-color:#a4ceb9}
+.assess-note-toggle.has-note{background:#e0f2e9;color:#0f7652;border-color:#afd9c3}
+.assess-note-toggle:focus-visible{outline:2px solid #15715a;outline-offset:2px}
+.assess-note-expanded{grid-column:1/-1;grid-row:2;padding:7px 0 3px 33px}
+.assess-note-expanded[hidden]{display:none!important}
+.assess-note-label{font-size:11px;font-weight:650;margin-bottom:5px;display:block}
+.assess-note-expanded .score-note{width:100%;min-height:36px;height:36px;padding:7px 10px;font-size:14px}
+.assess-visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+.assess-score-instructions{font-size:11px;margin-top:8px}
+.assess-modal-header{padding:10px 17px}
+.assess-modal-header h2{font-size:17px;margin-top:2px}
+.assess-modal-footer{padding:9px 17px}
+@media(max-width:760px){
+ .assess-modal-header{padding:9px 12px}
+ .assess-score-list{padding:2px 10px 14px}
+ .assess-score-row{grid-template-columns:minmax(0,1fr) 72px 30px;column-gap:7px;row-gap:4px;padding:5px 0;min-height:45px}
+ .assess-score-student{gap:6px;grid-column:1;grid-row:1}
+ .assess-score-identity b{font-size:11.5px;line-height:1.25}
+ .assess-score-nis{font-size:10px}
+ .assess-score-num{width:22px;height:22px;font-size:10px}
+ .assess-score-row .assess-score-field{grid-column:2;grid-row:1}
+ .assess-score-row .assess-score-field input{min-height:34px;height:34px;padding:4px 5px}
+ .assess-note-toggle{grid-column:3;grid-row:1;width:30px;height:32px}
+ .assess-note-expanded{grid-column:1/-1;grid-row:2;padding:6px 0 4px 28px}
+ .assess-score-instructions,.assess-objective{margin:7px 11px 0}
+ .assess-modal-footer{padding:7px 10px calc(8px + env(safe-area-inset-bottom))}
+ .assess-modal-footer .actions{gap:7px}
+ .assess-modal-footer .actions .btn{min-height:39px;padding:7px 9px;font-size:12px}
+}
+@media(max-width:350px){.assess-score-row{grid-template-columns:minmax(0,1fr) 66px 28px;column-gap:5px}.assess-note-toggle{width:28px}.assess-score-identity b{font-size:11px}}

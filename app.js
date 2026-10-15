@@ -1,4 +1,4 @@
-console.info('SIPANDAI v4.6 — Asesmen ringkas & dialog nilai');
+console.info('SIPANDAI v4.7 — Input nilai padat, catatan sesuai kebutuhan');
 'use strict';
 const S={token:'',user:null,home:null,view:'dashboard',classId:'',childId:'',additional:{},att:null,attEdit:false,attMode:'HARIAN',attDate:'',attMapel:'',sessionNo:'1',busy:false,menuCache:new Map(),needsHome:false,attRequest:0,learningTab:'journal'};
 try { S.token=sessionStorage.getItem('sipandai_token')||''; } catch(e) {}
@@ -690,7 +690,7 @@ async function loadAssessmentDetail(id){
     const rows=d.rows||[];
     h.innerHTML=`${d.objective?`<p class="assess-objective">Tujuan: ${E(d.objective)}</p>`:''}<div class="assess-score-instructions">${rows.length} siswa · Nilai 0–100 · Kosongkan jika belum dinilai${editable?' · Simpan semua sekaligus':''}</div>
       <form id="score-form" data-id="${E(id)}">
-      <div class="assess-score-list">${rows.map((s,i)=>`<div class="assess-score-row" data-student-id="${E(s.id)}"><div class="assess-score-student"><span class="assess-score-num">${i+1}</span><div><b>${E(s.name)}</b><div class="small muted">${E(s.nis)}</div></div></div><label class="assess-score-field"><span>Nilai</span><input type="number" class="score-input" min="0" max="100" step="0.01" aria-label="Nilai ${E(s.name)}" value="${E(s.score)}" ${editable?'':'disabled'}></label><label class="assess-score-field assess-note-field"><span>Catatan (opsional)</span><input class="score-note" maxlength="600" aria-label="Catatan ${E(s.name)}" value="${E(s.feedback)}" ${editable?'':'disabled'}></label></div>`).join('')}</div>
+      <div class="assess-score-list">${rows.map((s,i)=>`<div class="assess-score-row" data-student-id="${E(s.id)}"><div class="assess-score-student"><span class="assess-score-num">${i+1}</span><div class="assess-score-identity"><b>${E(s.name)}</b><span class="assess-score-nis">${E(s.nis)}</span></div></div><label class="assess-score-field"><span class="assess-visually-hidden">Nilai ${E(s.name)}</span><input type="number" class="score-input" min="0" max="100" step="0.01" inputmode="decimal" placeholder="—" aria-label="Nilai ${E(s.name)}" value="${E(s.score)}" ${editable?'':'disabled'}></label><button type="button" class="assess-note-toggle ${s.feedback?'has-note':''}" data-action="score-note-toggle" aria-expanded="false" aria-controls="assess-note-${i}" aria-label="${s.feedback?'Lihat catatan':'Tambahkan catatan'} untuk ${E(s.name)}" title="${s.feedback?'Catatan tersedia':'Tambahkan catatan (opsional)'}">✎</button><div id="assess-note-${i}" class="assess-note-expanded" hidden><label class="assess-note-label">Catatan untuk ${E(s.name)} <span class="muted">(opsional)</span></label><input class="score-note" maxlength="600" aria-label="Catatan ${E(s.name)}" placeholder="Tambahkan catatan jika diperlukan…" value="${E(s.feedback)}" ${editable?'':'disabled'}></div></div>`).join('')}</div>
       <footer class="assess-modal-footer"><span class="small muted" id="assess-save-status">${editable?'Pastikan nilai sudah sesuai sebelum dipublikasikan.':'Nilai hanya dapat diubah saat asesmen berstatus Draft.'}</span><div class="actions"><button type="button" class="btn btn-outline" data-action="assessment-close-modal">Tutup</button>${editable?'<button type="submit" class="btn btn-primary">Simpan Semua Nilai</button>':''}</div></footer></form>`;
   }catch(e){toast(e.message,true);const h=modal.querySelector('#assessment-modal-body');if(h&&modal.isConnected)h.innerHTML='<div class="notice warning">Gagal membuka nilai: '+E(e.message)+'</div>';}
 }
@@ -938,6 +938,20 @@ document.addEventListener('submit',async ev=>{
   console.error('SIPANDAI: handler simpan tidak ditemukan untuk formulir',formId);
   toast('Formulir '+formId+' belum memiliki proses penyimpanan. Hubungi pengelola.',true);
 });
+// Saat mengetik nilai, Enter maju ke siswa berikutnya (bukan mengirim seluruh formulir).
+document.addEventListener('keydown',ev=>{
+  if(ev.key!=='Enter'||!ev.target.matches?.('#score-form .score-input'))return;
+  ev.preventDefault();
+  const cells=[...document.querySelectorAll('#score-form .score-input:not(:disabled)')];
+  const i=cells.indexOf(ev.target),next=cells[i+(ev.shiftKey?-1:1)];
+  if(next){next.focus();next.select();}
+});
+// Tanda pena berubah saat catatan ditambahkan atau dikosongkan.
+document.addEventListener('input',ev=>{
+  if(!ev.target.matches?.('#score-form .score-note'))return;
+  const b=ev.target.closest('.assess-score-row')?.querySelector('.assess-note-toggle');
+  if(b)b.classList.toggle('has-note',Boolean(ev.target.value.trim()));
+});
 document.addEventListener('keydown',ev=>{if(ev.key==='Escape')toggleMobileMore(false);});
 document.addEventListener('click',ev=>{
   const drawer=document.getElementById('mobile-more');
@@ -1016,6 +1030,15 @@ document.addEventListener('click',async ev=>{
   }
   if(action==='edit-journal'){editJournal(b.dataset.id);return;}
   if(action==='clear-journal'){const f=$('#journal-form');if(f){f.reset();f.elements.id.value='';}return;}
+  if(action==='score-note-toggle'){
+    const row=b.closest('.assess-score-row');const field=row?.querySelector('.assess-note-expanded');
+    if(!field)return;
+    const show=field.hidden;
+    field.hidden=!show;b.setAttribute('aria-expanded',String(show));
+    b.classList.toggle('is-open',show);
+    if(show)field.querySelector('.score-note')?.focus({preventScroll:true});
+    return;
+  }
   if(action==='assessment-close-modal'){closeAssessmentModal();return;}
   if(action==='assessment-ui-tab'){
     if(b.dataset.tab==='form'&&!canRecord())return;

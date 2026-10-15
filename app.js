@@ -1,4 +1,4 @@
-console.info('SIPANDAI v4.8 — Portal Orang Tua/Wali: nilai per mapel, ringkasan harian dan Tahfidz');
+console.info('SIPANDAI v4.9 — Mapel, PWA, indikator edit asesmen dan nilai perkembangan.');
 'use strict';
 const S={token:'',user:null,home:null,view:'dashboard',classId:'',childId:'',additional:{},att:null,attEdit:false,attMode:'HARIAN',attDate:'',attMapel:'',sessionNo:'1',busy:false,menuCache:new Map(),needsHome:false,attRequest:0,learningTab:'journal'};
 try { S.token=sessionStorage.getItem('sipandai_token')||''; } catch(e) {}
@@ -138,7 +138,7 @@ async function submitAction(action,data,opt={}){
   try{
     busy(true);
     const res=await call(action,data);
-    if(['createUser','updateUser','resetPassword','createClass','updateClass','createSubject','addStudent','saveSubjectOwners','assignTeacher','linkParent','reviewRequest','requestLink','saveNotice','publishNotice','confirmNotice','saveBehavior','publishBehavior','saveAttendance'].includes(action)){
+    if(['createUser','updateUser','resetPassword','createClass','updateClass','createSubject','updateSubject','addStudent','saveSubjectOwners','assignTeacher','linkParent','reviewRequest','requestLink','saveNotice','publishNotice','confirmNotice','saveBehavior','publishBehavior','saveAttendance'].includes(action)){
       if(action!=='saveAttendance') S.needsHome=true;
       if(action==='saveAttendance')forgetMenuCache('attendance');
       if(['linkParent','resetPassword'].includes(action))forgetMenuCache('parents');
@@ -181,7 +181,7 @@ function otherMenuItems(){return menuItems().filter(id=>!MOBILE_NAV.includes(id)
 function baseUI(){
   const initials=(S.user.fullName||'S').split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();
   const cs=S.home?.classes||[];
-  $('#app').innerHTML=`<div class="layout"><aside class="sidebar"><div class="brand"><span class="logo">S</span><div><div class="logo-name">SIPANDAI</div><div class="small muted">Sekolah & Keluarga</div></div></div><nav class="nav" aria-label="Navigasi utama">${menuItems().map(id=>navButton(id)).join('')}</nav><div class="side-bottom"><div class="small muted">${E(S.user.role.replace('_',' '))}</div><b>${E(S.user.fullName)}</b><div class="section-gap"><button class="btn btn-outline btn-full" data-action="logout">Keluar akun</button></div></div></aside><main class="main"><header class="topbar"><div class="brand"><span class="logo" style="width:35px;height:35px;font-size:16px">S</span><div><b>SIPANDAI</b><small>Informasi Pembelajaran & Pendampingan Anak</small></div></div><div class="topright">${cs.length>1&&!role('ORANG_TUA')?`<select class="select-small" id="switch-class" aria-label="Pilih kelas">${cs.map(c=>`<option value="${E(c.id)}" ${c.id===S.classId?'selected':''}>${E(c.name)}</option>`).join('')}</select>`:''}<span class="avatar">${E(initials)}</span><span class="name"><b>${E(S.user.fullName)}</b><small>${E(S.user.role.replaceAll('_',' '))}</small></span><button type="button" class="topbar-mobile-logout" data-action="logout" aria-label="Keluar akun">⇥ <span>Keluar</span></button></div></header><div id="content" class="main-content"></div></main></div><div id="mobile-more" class="mobile-more" role="dialog" aria-label="Menu lainnya" aria-hidden="true"><div class="mobile-more-title"><b>Menu Lainnya</b><button type="button" class="mobile-more-close" data-action="close-more" aria-label="Tutup menu">✕</button></div><nav aria-label="Menu tambahan">${otherMenuItems().map(id=>navButton(id)).join('')}</nav><div class="mobile-more-profile"><div class="small muted">${E(S.user.role.replaceAll('_',' '))}</div><b>${E(S.user.fullName)}</b></div><button type="button" class="btn btn-outline btn-full mobile-more-logout" data-action="logout">⇥ Keluar Akun</button></div><nav class="mobilebar" aria-label="Navigasi utama ponsel">${MOBILE_NAV.map(x=>navButton(x,true)).join('')}</nav>`;
+  $('#app').innerHTML=`<div class="layout"><aside class="sidebar"><div class="brand"><img class="logo" src="./icons/sipandai-logo6-256.png" alt="Logo SIPANDAI"><div><div class="logo-name">SIPANDAI</div><div class="small muted">Sekolah & Keluarga</div></div></div><nav class="nav" aria-label="Navigasi utama">${menuItems().map(id=>navButton(id)).join('')}</nav><div class="side-bottom"><div class="small muted">${E(S.user.role.replace('_',' '))}</div><b>${E(S.user.fullName)}</b><div class="section-gap"><button class="btn btn-outline btn-full" data-action="logout">Keluar akun</button></div></div></aside><main class="main"><header class="topbar"><div class="brand"><img class="logo" src="./icons/sipandai-logo6-256.png" alt="Logo SIPANDAI" style="width:35px;height:35px"><div><b>SIPANDAI</b><small>Informasi Pembelajaran & Pendampingan Anak</small></div></div><div class="topright">${cs.length>1&&!role('ORANG_TUA')?`<select class="select-small" id="switch-class" aria-label="Pilih kelas">${cs.map(c=>`<option value="${E(c.id)}" ${c.id===S.classId?'selected':''}>${E(c.name)}</option>`).join('')}</select>`:''}<span class="avatar">${E(initials)}</span><span class="name"><b>${E(S.user.fullName)}</b><small>${E(S.user.role.replaceAll('_',' '))}</small></span><button type="button" class="topbar-mobile-logout" data-action="logout" aria-label="Keluar akun">⇥ <span>Keluar</span></button></div></header><div id="content" class="main-content"></div></main></div><div id="mobile-more" class="mobile-more" role="dialog" aria-label="Menu lainnya" aria-hidden="true"><div class="mobile-more-title"><b>Menu Lainnya</b><button type="button" class="mobile-more-close" data-action="close-more" aria-label="Tutup menu">✕</button></div><nav aria-label="Menu tambahan">${otherMenuItems().map(id=>navButton(id)).join('')}</nav><div class="mobile-more-profile"><div class="small muted">${E(S.user.role.replaceAll('_',' '))}</div><b>${E(S.user.fullName)}</b></div><button type="button" class="btn btn-outline btn-full mobile-more-logout" data-action="logout">⇥ Keluar Akun</button></div><nav class="mobilebar" aria-label="Navigasi utama ponsel">${MOBILE_NAV.map(x=>navButton(x,true)).join('')}</nav>`;
 }
 function toggleMobileMore(open){
   const el=document.getElementById('mobile-more');if(!el)return;
@@ -193,8 +193,8 @@ function toggleMobileMore(open){
   if(next)el.querySelector('.mobile-more-close')?.focus();
   else if(el.contains(document.activeElement))trigger?.focus();
 }
-function loginUI(){S.user=null;$('#app').innerHTML=`<div class="login-wrap"><div class="login-card"><div class="brand"><span class="logo">S</span><div><div class="logo-name">SIPANDAI</div><div class="small muted">Sekolah dan keluarga, saling terhubung</div></div></div><h1>Selamat datang kembali</h1><p class="muted">Masuk untuk melihat aktivitas pembelajaran dan perkembangan anak.</p><form id="login-form"><div class="field"><label class="label">Username / NIS</label><input name="username" autocomplete="username" required placeholder="Masukkan username atau NIS"></div><div class="field"><label class="label">Password</label><input name="password" type="password" autocomplete="current-password" required placeholder="Masukkan password"></div><button type="submit" class="btn btn-primary btn-full">Masuk ke SIPANDAI →</button></form><div class="login-foot">Orang tua menggunakan NIS atau username akun keluarga dan password yang diberikan oleh guru kelas. Jika lupa password, hubungi Admin sekolah.</div></div></div>`;}
-function passwordUI(){ $('#app').innerHTML=`<div class="login-wrap"><div class="login-card"><div class="brand"><span class="logo">S</span><b class="logo-name">SIPANDAI</b></div><h1>Ganti password awal</h1><p class="muted">Untuk menjaga data siswa, password sementara wajib diganti sebelum mengakses aplikasi.</p>${changePasswordForm()}<button class="btn btn-outline btn-full section-gap" data-action="logout">Keluar akun</button></div></div>`;}
+function loginUI(){S.user=null;$('#app').innerHTML=`<div class="login-wrap"><div class="login-card"><div class="brand"><img class="logo" src="./icons/sipandai-logo6-256.png" alt="Logo SIPANDAI"><div><div class="logo-name">SIPANDAI</div><div class="small muted">Sekolah dan keluarga, saling terhubung</div></div></div><h1>Selamat datang kembali</h1><p class="muted">Masuk untuk melihat aktivitas pembelajaran dan perkembangan anak.</p><form id="login-form"><div class="field"><label class="label">Username / NIS</label><input name="username" autocomplete="username" required placeholder="Masukkan username atau NIS"></div><div class="field"><label class="label">Password</label><input name="password" type="password" autocomplete="current-password" required placeholder="Masukkan password"></div><button type="submit" class="btn btn-primary btn-full">Masuk ke SIPANDAI →</button></form><div class="login-foot">Orang tua menggunakan NIS atau username akun keluarga dan password yang diberikan oleh guru kelas. Jika lupa password, hubungi Admin sekolah.</div></div></div>`;}
+function passwordUI(){ $('#app').innerHTML=`<div class="login-wrap"><div class="login-card"><div class="brand"><img class="logo" src="./icons/sipandai-logo6-256.png" alt="Logo SIPANDAI"><b class="logo-name">SIPANDAI</b></div><h1>Ganti password awal</h1><p class="muted">Untuk menjaga data siswa, password sementara wajib diganti sebelum mengakses aplikasi.</p>${changePasswordForm()}<button class="btn btn-outline btn-full section-gap" data-action="logout">Keluar akun</button></div></div>`;}
 function changePasswordForm(){return `<form id="change-password-form"><div class="field"><label class="label">Password saat ini</label><input type="password" name="oldPassword" required autocomplete="current-password"></div><div class="field"><label class="label">Password baru</label><input type="password" name="newPassword" minlength="5" required autocomplete="new-password" placeholder="Minimal 5 karakter; angka, huruf, atau campuran"></div><button class="btn btn-primary" type="submit">Simpan password baru</button></form>`;}
 async function loadHome(){const home=await call('home',{classId:S.classId,childId:S.childId});S.needsHome=false;S.home=home;S.user=home.user;if(S.user.role==='GURU_MAPEL')S.attMode='MAPEL';S.classId=home.classId;S.childId=home.currentChild?.id||'';if(S.user.mustChangePassword){passwordUI();return;}baseUI();render();}
 function prefetchTodayAttendance(){
@@ -544,14 +544,41 @@ function paintUserEdit(){
  slot.innerHTML=`<div class="user-edit-panel"><div class="panel-title">Edit Akun Guru</div><form id="user-edit-form"><input type="hidden" name="userId" value="${E(target.id)}"><div class="form-grid"><div class="field"><label class="label">Nama lengkap</label><input name="fullName" maxlength="120" required value="${E(target.fullName)}"></div><div class="field"><label class="label">Username</label><input name="username" minlength="3" maxlength="90" required pattern="(?:[A-Za-z0-9._]|-){3,90}" value="${E(target.username)}"></div><div class="field"><label class="label">Role</label><select name="role">${[['GURU_KELAS','Guru Kelas'],['GURU_MAPEL','Guru Mapel'],['KEPALA_SEKOLAH','Kepala Sekolah']].map(([id,name])=>`<option value="${id}" ${target.role===id?'selected':''}>${name}</option>`).join('')}</select></div></div><p class="hint">Perubahan nama/username/role mengakhiri sesi akun tersebut. Jika guru masih menjadi pemilik kelas atau pengampu, pindahkan penugasannya dahulu sebelum mengubah role.</p><div class="actions"><button class="btn btn-primary" type="submit">Simpan Perubahan</button><button class="btn" type="button" data-action="cancel-edit-user">Batal</button></div></form></div>`;
  slot.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
+const SUBJECT_ADMIN={items:[],query:'',editingId:'',request:0};
 async function renderClasses(){
  if(!role('ADMIN'))return;
  const teachers=(S.home.staff||[]).filter(x=>x.role==='GURU_KELAS'&&x.active==='YES');
  const opts=(selected='')=>teachers.map(x=>`<option value="${E(x.id)}" ${x.id===selected?'selected':''}>${E(x.fullName)}</option>`).join('');
- let html=head('Kelas & Mapel','Kelola kelas, guru pemilik, dan mata pelajaran.')+`<div class="grid grid2"><div class="card"><div class="panel-title" id="class-title">Tambah kelas</div><form id="class-form"><input type="hidden" name="id" value=""><div class="field"><label class="label">Nama kelas</label><input name="name" maxlength="70" required placeholder="Contoh: 5A"></div><div class="field"><label class="label">Guru Kelas pemilik</label><select name="teacherId" required>${opts()}</select></div><div class="actions"><button class="btn btn-primary" id="class-submit" type="submit">Tambah kelas</button><button class="btn" type="button" data-action="class-new">Batal edit</button></div></form></div><div class="card"><div class="panel-title">Tambah mata pelajaran</div><form id="subject-form"><div class="field"><label class="label">Nama mata pelajaran</label><input name="name" required maxlength="110" placeholder="Contoh: Bahasa Sunda"></div><button class="btn btn-primary" type="submit">Simpan Mapel</button></form></div></div>`;
+ let html=head('Kelas & Mapel','Kelola kelas, guru pemilik, dan daftar mata pelajaran.')+`<div class="grid grid2"><div class="card"><div class="panel-title" id="class-title">Tambah kelas</div><form id="class-form"><input type="hidden" name="id" value=""><div class="field"><label class="label">Nama kelas</label><input name="name" maxlength="70" required placeholder="Contoh: 5A"></div><div class="field"><label class="label">Guru Kelas pemilik</label><select name="teacherId" required>${opts()}</select></div><div class="actions"><button class="btn btn-primary" id="class-submit" type="submit">Tambah kelas</button><button class="btn" type="button" data-action="class-new">Batal edit</button></div></form></div><div class="card"><div class="panel-title" id="subject-form-title">Tambah mata pelajaran</div><form id="subject-form"><input type="hidden" name="id" value=""><div class="field"><label class="label">Nama mata pelajaran</label><input name="name" required maxlength="110" placeholder="Contoh: Bahasa Sunda"></div><div class="actions"><button id="subject-submit" class="btn btn-primary" type="submit">Tambah Mapel</button><button type="button" class="btn" data-action="subject-new">Batal edit</button></div></form><p class="hint">Perbaikan nama tidak mengubah ID mapel atau data nilai yang sudah tersimpan.</p></div></div>`;
+ html+=`<div class="card section-gap"><div class="row-between"><div class="panel-title">Daftar Mata Pelajaran <span class="pill" id="subject-count">—</span></div><button type="button" class="btn btn-sm" data-action="subject-refresh">↻ Perbarui</button></div><div class="field" style="margin:12px 0"><label class="label" for="subject-search">Cari mata pelajaran</label><input type="search" id="subject-search" placeholder="Ketik nama mapel…" value="${E(SUBJECT_ADMIN.query)}" autocomplete="off"></div><div id="subject-list-host" aria-live="polite">${loader()}</div></div>`;
  html+=`<div class="card section-gap"><div class="panel-title">Daftar kelas <span class="pill">${S.home.classes.length}</span></div><div class="list-card-grid">${S.home.classes.map(c=>`<div class="item"><div class="item-head"><b>${E(c.name)}</b><span class="pill green">Aktif</span></div><p class="small muted">Guru Kelas: ${E(teachers.find(x=>x.id===c.teacherId)?.fullName||'Belum ditentukan')}</p><div class="actions"><button type="button" class="btn btn-sm btn-outline" data-action="edit-class" data-id="${E(c.id)}">Edit kelas & pemilik</button></div></div>`).join('')||empty('Belum ada kelas.')}</div></div>`;
  setContent(html);
+ const request=++SUBJECT_ADMIN.request;
+ try{
+   const items=await cachedCall('subjectList',{},90000);
+   if(request!==SUBJECT_ADMIN.request||S.view!=='classes')return;
+   SUBJECT_ADMIN.items=items||[];paintSubjectList();
+ }catch(err){const el=$('#subject-list-host');if(el&&S.view==='classes')el.innerHTML='<div class="notice warning">Gagal memuat mapel: '+E(err.message)+'</div>';}
 }
+function paintSubjectList(){
+ const host=$('#subject-list-host');if(!host)return;
+ const q=SUBJECT_ADMIN.query.trim().toLocaleLowerCase('id');
+ const rows=SUBJECT_ADMIN.items.filter(x=>!q||x.name.toLocaleLowerCase('id').includes(q));
+ const count=$('#subject-count');if(count)count.textContent=SUBJECT_ADMIN.items.length;
+ host.innerHTML=`<div class="small muted">${rows.length} dari ${SUBJECT_ADMIN.items.length} mapel</div><div class="list-card-grid subject-list-grid">${rows.map(x=>`<div class="item subject-list-item"><b>${E(x.name)}</b><button type="button" class="btn btn-sm btn-outline" data-action="edit-subject" data-id="${E(x.id)}" aria-label="Edit mata pelajaran ${E(x.name)}">✎ Edit</button></div>`).join('')||empty('Tidak ada mapel yang cocok.')}</div>`;
+}
+function editSubjectForm(id){
+ const item=SUBJECT_ADMIN.items.find(x=>x.id===id),f=$('#subject-form');if(!item||!f)return;
+ f.elements.namedItem('id').value=item.id;f.elements.namedItem('name').value=item.name;
+ SUBJECT_ADMIN.editingId=id;$('#subject-form-title').textContent='Edit mata pelajaran';$('#subject-submit').textContent='Simpan Perubahan';
+ f.scrollIntoView({behavior:'smooth',block:'center'});f.elements.namedItem('name').focus({preventScroll:true});
+}
+function resetSubjectForm(){
+ const f=$('#subject-form');if(!f)return;
+ f.reset();f.elements.namedItem('id').value='';SUBJECT_ADMIN.editingId='';
+ $('#subject-form-title').textContent='Tambah mata pelajaran';$('#subject-submit').textContent='Tambah Mapel';
+}
+
 function editClassForm(id){
  const c=(S.home.classes||[]).find(x=>x.id===id),f=$('#class-form');if(!c||!f)return;
  f.elements.namedItem('id').value=c.id;f.elements.namedItem('name').value=c.name;f.elements.namedItem('teacherId').value=c.teacherId;
@@ -560,12 +587,24 @@ function editClassForm(id){
 }
 function resetClassForm(){const f=$('#class-form');if(!f)return;f.reset();f.elements.namedItem('id').value='';$('#class-title').textContent='Tambah kelas';$('#class-submit').textContent='Tambah kelas';}
 
-function renderSettings(){setContent(head('Pengaturan akun','Ganti password secara berkala untuk melindungi informasi siswa.')+`<div class="card" style="max-width:550px"><div class="panel-title">Keamanan akun</div><div class="notice">Username: <b>${E(S.user.username)}</b>. Sesi akan berakhir setelah password berhasil diganti.</div><div class="section-gap">${changePasswordForm()}</div></div>`);}
+function renderSettings(){setContent(head('Pengaturan akun','Keamanan dan pemasangan aplikasi.')+`<div class="card" style="max-width:550px"><div class="panel-title">Pasang SIPANDAI di ponsel</div><p class="small muted">Buka SIPANDAI langsung dari layar utama seperti aplikasi. Koneksi internet tetap diperlukan untuk login dan menyimpan data.</p><div id="pwa-install-status" class="small muted">${window.matchMedia?.('(display-mode: standalone)').matches?'Aplikasi sudah terpasang.':'Gunakan tombol Pasang jika tersedia, atau menu browser → Tambahkan ke layar utama.'}</div><div class="actions section-gap"><button type="button" class="btn btn-primary" data-action="pwa-install">Pasang aplikasi</button></div><p class="hint">Pada iPhone/iPad, buka melalui Safari → Bagikan → Tambah ke Layar Utama.</p></div><div class="card section-gap" style="max-width:550px"><div class="panel-title">Keamanan akun</div><div class="notice">Username: <b>${E(S.user.username)}</b>. Sesi akan berakhir setelah password berhasil diganti.</div><div class="section-gap">${changePasswordForm()}</div></div>`);}
+let pwaInstallEvent=null;
+window.addEventListener('beforeinstallprompt',ev=>{ev.preventDefault();pwaInstallEvent=ev;});
+window.addEventListener('appinstalled',()=>{pwaInstallEvent=null;toast('SIPANDAI berhasil dipasang di perangkat.');});
+function installPWA(){
+  if(window.matchMedia?.('(display-mode: standalone)').matches){toast('SIPANDAI sudah berjalan sebagai aplikasi.');return;}
+  if(pwaInstallEvent){const ev=pwaInstallEvent;pwaInstallEvent=null;ev.prompt();ev.userChoice?.then(result=>{if(result?.outcome!=='accepted')toast('Anda dapat memasang SIPANDAI nanti melalui menu browser.');});return;}
+  void sipAlert('Android Chrome: buka menu ⋮ lalu pilih “Instal aplikasi” atau “Tambahkan ke layar utama”. iPhone Safari: Bagikan → Tambah ke Layar Utama.',{title:'Pasang SIPANDAI'});
+}
+if('serviceWorker' in navigator && window.isSecureContext){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(e=>console.warn('PWA belum tersedia:',e.message)));
+}
+
 async function readFile(file){if(!file)return null;if(file.size>3*1024*1024)throw new Error('File melebihi 3 MB.');const allowed=['image/jpeg','image/png','application/pdf'];if(!allowed.includes(file.type))throw new Error('File harus JPG, PNG, atau PDF.');const data=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(file);});return{name:file.name,mime:file.type,data};}
 async function openBehaviorFile(id){try{toast('Menyiapkan dokumen...');const d=await call('getBehaviorFile',{behaviorId:id});const binary=atob(d.base64),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);const obj=URL.createObjectURL(new Blob([bytes],{type:d.mime}));const a=document.createElement('a');a.href=obj;a.download=d.name||'dokumen';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(obj),20000);}catch(e){toast(e.message,true);}}
 // Semua tombol dan formulir menggunakan delegasi event supaya render ulang tetap konsisten.
 /* ====================== UI SIPANDAI TAHAP 2 ====================== */
-S.v2={journal:[],assessments:[],tasks:[],assessmentId:'',taskId:'',taskStudentId:'',fetchNo:0,detailRequest:0,journalKey:null,assessmentKey:null,taskKey:null};
+S.v2={editAssessmentRequest:0,journal:[],assessments:[],tasks:[],assessmentId:'',taskId:'',taskStudentId:'',fetchNo:0,detailRequest:0,journalKey:null,assessmentKey:null,taskKey:null};
 const ASSESS_UI={tab:'list',query:'',subject:'ALL',type:'ALL',status:'ALL',page:1,pageSize:8};
 S.progress={studentId:'',lastKey:'',report:null,requestId:0};
 const PARENT_GRADE_UI={report:null,key:'',period:'ALL',requestId:0};
@@ -760,15 +799,30 @@ async function loadAssessmentDetail(id){
 }
 async function editAssessment(id){
   const a=S.v2.assessments.find(x=>x.id===id);if(!a)return;
+  const request=++S.v2.editAssessmentRequest;
   ASSESS_UI.tab='form';renderAssessments();
   const f=$('#assessment-form');if(!f)return;
-  try{const d=await cachedCall('assessmentDetail',{id},13000);if(!f.isConnected)return;
+  const card=f.closest('.card');
+  const banner=document.createElement('div');banner.className='assess-edit-loading';banner.setAttribute('role','status');banner.setAttribute('aria-live','polite');
+  banner.innerHTML='<span class="assess-edit-spinner" aria-hidden="true"></span><div><strong>Memuat informasi asesmen…</strong><div class="small muted">Nama, jenis, tanggal, dan tujuan pembelajaran sedang diambil.</div></div>';
+  card.insertBefore(banner,f);
+  f.querySelectorAll('input,select,textarea,button').forEach(e=>e.disabled=true);
+  f.setAttribute('aria-busy','true');
+  f.scrollIntoView({behavior:'smooth',block:'start'});
+  try{
+    const d=await cachedCall('assessmentDetail',{id},13000);
+    if(!f.isConnected||request!==S.v2.editAssessmentRequest||S.view!=='assessments'||ASSESS_UI.tab!=='form')return;
+    f.querySelectorAll('input,select,textarea,button').forEach(e=>e.disabled=false);
     f.elements.id.value=id;f.elements.mapelId.value=a.mapelId;f.elements.mapelId.disabled=true;
     f.elements.name.value=a.name;f.elements.date.value=a.date;f.elements.objective.value=d.objective||'';
     const types=['Asesmen Harian','Asesmen Tengah Semester','Asesmen Akhir Semester','Asesmen Akhir Tahun'];
     f.elements.type.value=types.includes(a.type)?a.type:'LAINNYA';f.elements.customType.value=types.includes(a.type)?'':a.type;
-    f.scrollIntoView({behavior:'smooth',block:'start'});
-  }catch(e){toast('Tidak dapat memuat informasi asesmen: '+e.message,true);}
+    banner.remove();f.removeAttribute('aria-busy');
+  }catch(e){
+    if(!f.isConnected||request!==S.v2.editAssessmentRequest)return;
+    banner.classList.add('error');banner.innerHTML='<span aria-hidden="true">⚠</span><div><strong>Gagal memuat informasi asesmen.</strong><div class="small muted">'+E(e.message)+'</div><button class="btn btn-sm" type="button" data-action="edit-assessment" data-id="'+E(id)+'">Coba lagi</button></div>';
+    f.removeAttribute('aria-busy');toast('Tidak dapat memuat informasi asesmen: '+e.message,true);
+  }
 }
 
 /* ------------------------- TUGAS / KUIS ------------------------------ */
@@ -869,11 +923,17 @@ function paintProgress(r){
     ${stat('Tugas selesai',t.done,'Dari '+t.total+' tugas yang telah diterbitkan')}
     ${stat('Catatan apresiasi',b.positive,'Pembinaan: '+b.guidance)}
   </div>`;
-  if(role('ORANG_TUA')&&r.parentGrades){
-    html+=`<div class="card section-gap"><div class="panel-title">Perkembangan nilai Harian & Proyek</div><p class="hint">Nilai ASTS, ASAS, dan ASAT tetap terpisah. Lihat rincian lengkap pada Pembelajaran → Asesmen & Nilai.</p><div class="grid grid2">${r.parentGrades.subjects.map(s=>`<div class="parent-progress-subject"><b>${E(s.name)}</b><div class="row-between"><span class="small muted">Rata-rata harian (${s.dailyCount} nilai)</span><strong>${E(formatParentGrade(s.dailyAverage))}</strong></div></div>`).join('')||empty('Belum ada asesmen terpublikasi.')}</div></div>`;
-  }
-  html+=`<div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Perkembangan nilai per mapel</div><p class="hint">${role('ORANG_TUA')?'Rincian asesmen terpublikasi. Rata-rata harian terpisah seperti ringkasan di atas.':'Rata-rata sederhana dari asesmen yang sudah diterbitkan, bukan nilai akhir rapor.'}</p>
-    ${r.subjects.map(s=>`<div class="progress-subject"><div class="row-between"><b>${E(s.name)}</b><span class="progress-score">${role('ORANG_TUA')?'':E(s.average)}</span></div>${role('ORANG_TUA')?'':`<div class="progress-meter"><span style="width:${Math.max(0,Math.min(100,s.average))}%"></span></div>`}<div class="small muted">${s.count} asesmen · Nilai terbaru: ${E(s.latest)}</div><details class="section-gap"><summary class="small">Lihat rincian asesmen</summary><div class="stack section-gap">${s.marks.map(m=>`<div class="item"><div class="row-between"><b>${E(m.name)}</b><b>${E(m.score)}</b></div><div class="small muted">${E(m.date)} · ${E(m.type)}</div>${m.objective?`<p class="small">Tujuan: ${E(m.objective)}</p>`:''}${m.feedback?`<p class="small">Catatan: ${E(m.feedback)}</p>`:''}</div>`).join('')}</div></details></div>`).join('')||empty('Nilai terpublikasi belum tersedia.')}</div>
+  // Ringkasan perkembangan menggunakan rerata HARIAN+PROYEK saja; ujian tidak pernah dicampur.
+  const progressSubjectCards=(r.subjects||[]).map(s=>{
+    const daily=(s.marks||[]).filter(m=>m.category==='HARIAN'||m.category==='PROYEK');
+    const exams=(s.marks||[]).filter(m=>['ASTS','ASAS','ASAT'].includes(m.category));
+    const other=(s.marks||[]).filter(m=>!['HARIAN','PROYEK','ASTS','ASAS','ASAT'].includes(m.category));
+    const value=s.dailyAverage===undefined?s.average:s.dailyAverage;
+    return `<div class="progress-subject progress-subject-v49"><div class="row-between"><b>${E(s.name)}</b><span class="progress-score">${E(formatParentGrade(value))}</span></div><div class="small muted">Rata-rata Harian + Proyek · ${daily.length} nilai</div>${daily.length&&value!==null?`<div class="progress-meter"><span style="width:${Math.max(0,Math.min(100,Number(value)||0))}%"></span></div>`:''}
+      ${exams.length?`<div class="progress-exam-list"><strong class="small">Ujian (tidak masuk rata-rata)</strong>${exams.map(m=>`<div class="row-between"><span>${E(m.category)} · ${E(m.name)}</span><b>${E(m.score)}</b></div>`).join('')}</div>`:''}
+      <details class="section-gap"><summary class="small">Rincian ${daily.length} nilai harian/proyek${other.length?' & '+other.length+' lainnya':''}</summary><div class="stack section-gap">${[...daily,...other].map(m=>`<div class="item"><div class="row-between"><b>${E(m.name)}</b><b>${E(m.score)}</b></div><div class="small muted">${E(m.date)} · ${E(m.type)}</div>${m.feedback?`<p class="small">Catatan: ${E(m.feedback)}</p>`:''}</div>`).join('')||empty('Belum ada nilai harian/proyek.')}</div></details></div>`;
+  }).join('');
+  html+=`<div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Perkembangan nilai per mapel</div><p class="hint">Rata-rata hanya dari Asesmen Harian dan Proyek terpublikasi. ASTS, ASAS dan ASAT tercantum terpisah.</p>${progressSubjectCards||empty('Belum ada nilai terpublikasi.')}</div>
     <div class="card"><div class="panel-title">Penugasan & tindak lanjut</div><div class="grid grid2"><div class="notice">Selesai: <b>${t.done}</b><div class="small">Dikumpulkan: ${t.submitted}</div></div><div class="notice">Perlu perbaikan: <b>${t.needsRevision}</b><div class="small">Belum terkumpul: ${t.missing}</div></div></div><div class="stack section-gap">${t.recent.map(x=>`<div class="item row-between"><div><b>${E(x.title)}</b><div class="small muted">Batas ${E(niceDate(x.dueAt))}</div></div>${statusPill(x.status)}</div>`).join('')||empty('Belum ada tugas yang diterbitkan.')}</div></div></div>`;
   html+=`<div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Catatan perkembangan perilaku</div><div class="stack">${b.recent.map(x=>`<div class="item"><div class="row-between">${x.kind==='POSITIF'?'<span class="pill green">Apresiasi</span>':'<span class="pill yellow">Pembinaan</span>'}<span class="small muted">${E(x.date)}</span></div><p>${E(x.description)}</p>${x.followUp?`<p class="small">Tindak lanjut: ${E(x.followUp)}</p>`:''}</div>`).join('')||empty('Belum ada catatan perilaku yang dipublikasikan.')}</div></div>
     <div class="card"><div class="panel-title">Pesan perkembangan dari guru</div><div id="progress-notes" class="stack">${progressNotes(r)}</div></div></div>`;
@@ -963,7 +1023,12 @@ document.addEventListener('submit',async ev=>{
     const result=await submitAction(d.id?'updateClass':'createClass',d);
     if(result?.reassigned)toast('Guru Kelas dan '+result.reassigned+' penugasan mapel telah disesuaikan.');return;
   }
-  if(formId==='subject-form')return submitAction('createSubject',d);
+  if(formId==='subject-form'){
+    const editing=!!d.id,action=editing?'updateSubject':'createSubject';
+    const result=await submitAction(action,d,{refresh:false});
+    if(result){forgetMenuCache('subjectList','progressReport','assessmentList');S.needsHome=true;SUBJECT_ADMIN.query='';SUBJECT_ADMIN.editingId='';await loadHome();toast(editing?'Nama mapel diperbarui tanpa mengubah riwayat.':'Mata pelajaran ditambahkan.');}
+    return;
+  }
   if(formId==='student-form'){
     const updating=!!d.id;
     const r=await submitAction(updating?'updateStudent':'addStudent',{...d,classId:S.classId},{refresh:false});
@@ -1070,7 +1135,11 @@ document.addEventListener('click',async ev=>{
   if(action==='student-add'){STUDENT_UI.tab='create';renderStudents();return;}
   if(action==='student-page'){STUDENT_UI.page=Number(b.dataset.page)||1;paintStudentList();return;}
   if(action==='edit-class'){editClassForm(b.dataset.id);return;}
+  if(action==='pwa-install'){installPWA();return;}
   if(action==='class-new'){resetClassForm();return;}
+  if(action==='edit-subject'){editSubjectForm(b.dataset.id);return;}
+  if(action==='subject-new'){resetSubjectForm();return;}
+  if(action==='subject-refresh'){forgetMenuCache('subjectList');renderClasses();return;}
   if(action==='import-students'){await importStudentBatch();return;}
   if(action==='import-template'){downloadImportTemplate();return;}
   if(action==='edit-student'){editStudentForm(b.dataset.id);return;}
@@ -1221,7 +1290,7 @@ function switchPrintTab(id){
 /* Format cetak SIPANDAI: tampilan setara dashboard tetapi optimal untuk A4 dan PDF browser. */
 function sipDocShell(title,subtitle,content,meta=''){
  const stamp=new Date().toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'});
- return `<article class="sip-doc"><header class="sip-doc-head"><div class="sip-doc-brand"><div class="sip-doc-symbol">S</div><div><b>SIPANDAI</b><small>Informasi Pembelajaran & Pendampingan Anak</small></div></div><span class="sip-doc-type">LAPORAN SEKOLAH</span></header>
+ return `<article class="sip-doc"><header class="sip-doc-head"><div class="sip-doc-brand"><img class="sip-doc-symbol" src="./icons/sipandai-logo6-256.png" alt="Logo SIPANDAI"><div><b>SIPANDAI</b><small>Informasi Pembelajaran & Pendampingan Anak</small></div></div><span class="sip-doc-type">LAPORAN SEKOLAH</span></header>
  <section class="sip-doc-title"><p class="sip-doc-eyebrow">Dokumen perkembangan pembelajaran</p><h1>${E(title)}</h1><p>${E(subtitle)}</p></section>
  ${meta?`<div class="sip-doc-meta">${meta}</div>`:''}${content}
  <footer class="sip-doc-footer"><span>Dicetak dari SIPANDAI · ${E(stamp)}</span><span>Data sesuai catatan yang tersedia dalam sistem</span></footer></article>`;
@@ -1494,3 +1563,11 @@ document.addEventListener('keydown',ev=>{
   }
 },true);
 document.addEventListener('click',ev=>{if(ev.target?.id==='assessment-score-modal')closeAssessmentModal();});
+
+// SIPANDAI v4.9 — pencarian mapel langsung tanpa API tambahan.
+document.addEventListener('input',ev=>{
+ if(ev.target?.id==='subject-search'){
+   SUBJECT_ADMIN.query=ev.target.value;
+   paintSubjectList();
+ }
+});

@@ -925,15 +925,20 @@ function paintProgress(r){
     ${stat('Catatan apresiasi',b.positive,'Pembinaan: '+b.guidance)}
   </div>`;
   // Ringkasan perkembangan menggunakan rerata HARIAN+PROYEK saja; ujian tidak pernah dicampur.
-  const progressSubjectCards=(r.subjects||[]).map(s=>{
+  // Mapel ringkas: lima pertama langsung terlihat; mapel lainnya dibuka bila diperlukan.
+  // Rincian nilai/ujian hanya terbuka saat nama mapel dipilih.
+  const subjectItems=(r.subjects||[]).map(s=>{
     const daily=(s.marks||[]).filter(m=>m.category==='HARIAN'||m.category==='PROYEK');
     const exams=(s.marks||[]).filter(m=>['ASTS','ASAS','ASAT'].includes(m.category));
     const other=(s.marks||[]).filter(m=>!['HARIAN','PROYEK','ASTS','ASAS','ASAT'].includes(m.category));
     const value=s.dailyAverage===undefined?s.average:s.dailyAverage;
-    return `<div class="progress-subject progress-subject-v49"><div class="row-between"><b>${E(s.name)}</b><span class="progress-score">${E(formatParentGrade(value))}</span></div><div class="small muted">Rata-rata Harian + Proyek · ${daily.length} nilai</div>${daily.length&&value!==null?`<div class="progress-meter"><span style="width:${Math.max(0,Math.min(100,Number(value)||0))}%"></span></div>`:''}
+    return `<details class="progress-subject-compact"><summary class="progress-compact-summary"><span class="progress-compact-name">${E(s.name)}</span><span class="progress-compact-meta">${daily.length} nilai harian${exams.length?' · '+exams.length+' ujian':''}</span><strong class="progress-compact-score">${E(formatParentGrade(value))}</strong></summary><div class="progress-compact-detail">
+      ${daily.length&&value!==null?`<div class="progress-meter"><span style="width:${Math.max(0,Math.min(100,Number(value)||0))}%"></span></div>`:''}
       ${exams.length?`<div class="progress-exam-list"><strong class="small">Ujian (tidak masuk rata-rata)</strong>${exams.map(m=>`<div class="row-between"><span>${E(m.category)} · ${E(m.name)}</span><b>${E(m.score)}</b></div>`).join('')}</div>`:''}
-      <details class="section-gap"><summary class="small">Rincian ${daily.length} nilai harian/proyek${other.length?' & '+other.length+' lainnya':''}</summary><div class="stack section-gap">${[...daily,...other].map(m=>`<div class="item"><div class="row-between"><b>${E(m.name)}</b><b>${E(m.score)}</b></div><div class="small muted">${E(m.date)} · ${E(m.type)}</div>${m.feedback?`<p class="small">Catatan: ${E(m.feedback)}</p>`:''}</div>`).join('')||empty('Belum ada nilai harian/proyek.')}</div></details></div>`;
-  }).join('');
+      ${daily.length||other.length?`<div class="progress-compact-grades">${[...daily,...other].map(m=>`<div class="row-between"><span>${E(m.name)} <small class="muted">${E(m.date)}</small></span><strong>${E(m.score)}</strong></div>${m.feedback?`<p class="small muted">${E(m.feedback)}</p>`:''}`).join('')}</div>`:'<p class="small muted">Belum ada nilai harian/proyek.</p>'}
+    </div></details>`;
+  });
+  const progressSubjectCards=subjectItems.slice(0,5).join('')+(subjectItems.length>5?`<details class="progress-more-subjects"><summary>Lihat ${subjectItems.length-5} mata pelajaran lainnya</summary>${subjectItems.slice(5).join('')}</details>`:'');
   html+=`<div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Perkembangan nilai per mapel</div><p class="hint">Rata-rata hanya dari Asesmen Harian dan Proyek terpublikasi. ASTS, ASAS dan ASAT tercantum terpisah.</p>${progressSubjectCards||empty('Belum ada nilai terpublikasi.')}</div>
     <div class="card"><div class="panel-title">Penugasan & tindak lanjut</div><div class="grid grid2"><div class="notice">Selesai: <b>${t.done}</b><div class="small">Dikumpulkan: ${t.submitted}</div></div><div class="notice">Perlu perbaikan: <b>${t.needsRevision}</b><div class="small">Belum terkumpul: ${t.missing}</div></div></div><div class="stack section-gap">${t.recent.map(x=>`<div class="item row-between"><div><b>${E(x.title)}</b><div class="small muted">Batas ${E(niceDate(x.dueAt))}</div></div>${statusPill(x.status)}</div>`).join('')||empty('Belum ada tugas yang diterbitkan.')}</div></div></div>`;
   html+=`<div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Catatan perkembangan perilaku</div><div class="stack">${b.recent.map(x=>`<div class="item"><div class="row-between">${x.kind==='POSITIF'?'<span class="pill green">Apresiasi</span>':'<span class="pill yellow">Pembinaan</span>'}<span class="small muted">${E(x.date)}</span></div><p>${E(x.description)}</p>${x.followUp?`<p class="small">Tindak lanjut: ${E(x.followUp)}</p>`:''}</div>`).join('')||empty('Belum ada catatan perilaku yang dipublikasikan.')}</div></div>
@@ -1321,8 +1326,42 @@ function printTable(data){
  return sipDocShell(PRINT_TITLES[data.type]||'Laporan SIPANDAI',`Kelas ${data.className||'-'}`,sipSection('Rincian data',table),`<div><strong>${E(data.from||'Semua tanggal')}</strong><small>Dari</small></div><div><strong>${E(data.to||'Sekarang')}</strong><small>Sampai</small></div><div><strong>${data.rows.length}</strong><small>Baris data</small></div>`);
 }
 /* SIPANDAI v4.11: matriks absensi dengan total, layout cetak tanpa halaman kop kosong. */
+/* SIPANDAI v4.11.1: rekap kehadiran per 24 tanggal dan maksimal 30 siswa per lembar A4 landscape. */
+function printAttendanceWorkbook(data){
+ const sheets=data.sheets||[],pages=[];
+ const printDate=x=>/^\d{4}-\d{2}-\d{2}$/.test(x||'')?x.slice(8,10)+'/'+x.slice(5,7)+'/'+x.slice(0,4):x;
+ const period=[printDate(data.from)||'Semua tanggal',printDate(data.to)||'Sekarang'].join(' – ');
+ const when=new Date().toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'});
+ sheets.forEach(sheet=>{
+  const headers=sheet.headers||[],rows=sheet.rows||[];
+  const fixed=3,dates=Number(sheet.attendanceLayout?.dateColumns)||0,summary=Number(sheet.attendanceLayout?.summaryColumns)||4;
+  const summaries=Array.from({length:summary},(_,i)=>headers.length-summary+i)
+      .filter(i=>!/^keterangan$/i.test(String(headers[i]||'')));
+  const daily=Math.max(1,Math.ceil(dates/24)),studentPages=Math.max(1,Math.ceil(rows.length/30));
+  for(let part=0;part<daily;part++){
+   const ids=[0,1,2,...Array.from({length:Math.min(24,dates-part*24)},(_,i)=>fixed+part*24+i),...summaries];
+   const nDates=ids.length-fixed-summaries.length;
+   for(let batch=0;batch<studentPages;batch++){
+    const selected=rows.slice(batch*30,batch*30+30);
+    const isFirst=part===0&&batch===0;
+    const heading=data.mode==='MAPEL'?(sheet.title||sheet.name||'Absensi Mapel'):'Rekap Absen Harian';
+    const suffix=(daily*studentPages)>1?` <small>Bagian ${part+1}/${daily} · Siswa ${batch*30+1}–${Math.min(rows.length,batch*30+30)}</small>`:'';
+    // Identitas siswa dan rekap selalu diulang pada semua potongan tanggal.
+    const th=`<tr><th rowspan="2" class="col-no">No</th><th rowspan="2" class="col-nis">NIS</th><th rowspan="2" class="col-name">Nama Siswa</th>${nDates?`<th colspan="${nDates}" class="sip-att-date-group">Tanggal / Bulan</th>`:''}<th colspan="${summaries.length}" class="sip-att-total-group">Rekap Kehadiran</th></tr><tr>${ids.slice(3,3+nDates).map(i=>`<th class="col-date">${E(headers[i])}</th>`).join('')}${summaries.map(i=>`<th class="col-total">${E(headers[i])}</th>`).join('')}</tr>`;
+    const body=selected.map(row=>`<tr>${ids.map(i=>{
+      const value=i>=fixed&&i<fixed+dates?({Hadir:'H',Sakit:'S',Izin:'I',Alpa:'A'}[row[i]]||row[i]||''):row[i];
+      const klass=i===0?'col-no':i===1?'col-nis':i===2?'col-name':i<fixed+dates?'col-date':'col-total';
+      return `<td class="${klass}">${E(value??'')}</td>`;
+    }).join('')}</tr>`).join('');
+    pages.push(`<article class="sip-doc sip-doc-wide sip-att-page"><div class="sip-att-topline"><div class="sip-att-school"><img src="./icons/sipandai-logo6-256.png" alt=""><div><strong>SIPANDAI</strong><small>Informasi Pembelajaran & Pendampingan Anak</small></div></div><span class="sip-att-label">REKAP PEMBELAJARAN</span></div><div class="sip-att-titleline"><div><h1>${E(heading)}</h1><span>Kelas ${E(data.className||'-')}${suffix}</span></div><div class="sip-att-period">${E(period)}</div></div><table class="sip-att-compact-table"><colgroup><col class="col-no"><col class="col-nis"><col class="col-name">${Array.from({length:nDates},()=>'<col class="col-date">').join('')}${summaries.map(()=>'<col class="col-total">').join('')}</colgroup><thead>${th}</thead><tbody>${body}</tbody></table><footer class="sip-att-footer"><span>H: Hadir · S: Sakit · I: Izin · A: Alpa · Kosong: belum tercatat</span><span>Dicetak ${E(when)}</span></footer></article>`);
+   }
+  }
+ });
+ return `<div class="sip-att-pages">${pages.join('')}</div>`;
+}
 function printWorkbook(data){
- const isAttendance=data.type==='attendance',isScores=data.type==='scores',blocks=[];
+ if(data.type==='attendance')return printAttendanceWorkbook(data);
+ const isAttendance=false,isScores=data.type==='scores',blocks=[];
  for(const sheet of data.sheets||[]){
   const heads=sheet.headers||[],rows=sheet.rows||[],layout=sheet.scoreLayout||{};
   const fixed=isAttendance?3:isScores?(layout.identityColumns||0):0;

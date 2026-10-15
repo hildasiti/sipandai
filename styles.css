@@ -484,3 +484,64 @@ html,body{min-height:100%;width:100%;}
  #sip-print-root .sip-grade-notes>div{display:inline!important;margin-right:4px!important}
  #sip-print-root .sip-grade-notes>div:not(:last-child)::after{content:'  •  ';white-space:pre}
 }
+
+/* v4.11.1 — Perkembangan dipadatkan; mapel lain tersembunyi sampai dibuka. */
+.progress-subject-compact{border-bottom:1px solid var(--line)}
+.progress-compact-summary{list-style:none;display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12px;align-items:center;padding:10px 3px;cursor:pointer;position:relative}
+.progress-compact-summary::-webkit-details-marker{display:none}
+.progress-compact-summary::before{content:'▸';color:var(--green);font-size:12px;position:absolute;left:-11px}
+.progress-subject-compact[open]>.progress-compact-summary::before{content:'▾'}
+.progress-compact-name{font-size:13px;font-weight:750;min-width:0;overflow-wrap:anywhere}
+.progress-compact-meta{grid-column:1;grid-row:2;color:var(--muted);font-size:11px}
+.progress-compact-score{grid-column:2;grid-row:1 / span 2;color:var(--green2);font-size:19px}
+.progress-compact-detail{padding:0 3px 12px}
+.progress-compact-detail .progress-meter{margin:2px 0 10px}
+.progress-compact-grades{border:1px solid var(--line);border-radius:9px;margin-top:9px;padding:5px 10px;font-size:12px}
+.progress-compact-grades>.row-between{padding:5px 0;border-bottom:1px solid #edf0ed}
+.progress-compact-grades>.row-between:last-child{border:0}
+.progress-compact-grades small{font-size:10px}
+.progress-more-subjects{margin-top:11px}
+.progress-more-subjects>summary{cursor:pointer;text-align:center;border:1px solid #d4e6dc;border-radius:9px;padding:9px 12px;font-size:12px;font-weight:750;color:var(--green)}
+.progress-more-subjects[open]>summary{margin-bottom:6px}
+/* v4.11.1 — Cetak 30 siswa × 24 tanggal pada satu lembar A4 landscape. */
+.sip-att-pages{width:100%;}
+.sip-att-page{background:white;max-width:none;min-width:0;width:100%;padding:12px;margin:0 auto 14px;border-radius:0}
+.sip-att-topline,.sip-att-titleline{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.sip-att-topline{border-bottom:2px solid #176c59;padding-bottom:6px}
+.sip-att-school{display:flex;align-items:center;gap:7px}
+.sip-att-school img{width:28px;height:28px;object-fit:contain}
+.sip-att-school strong,.sip-att-school small{display:block}
+.sip-att-school strong{font-size:13px}
+.sip-att-school small{font-size:8px;color:#64746d}
+.sip-att-label{font-size:9px;letter-spacing:.7px;color:#14614f;font-weight:750}
+.sip-att-titleline{padding:8px 0 9px}
+.sip-att-titleline h1{font-size:16px;margin:0}
+.sip-att-titleline span{font-size:9px;color:#64746d}
+.sip-att-period{background:#ecf5ef;border:1px solid #d7e8dd;padding:5px 11px;border-radius:6px;white-space:nowrap;font-size:11px;font-weight:750}
+.sip-att-compact-table{width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;color:#23392f}
+.sip-att-compact-table th,.sip-att-compact-table td{border:1px solid #c5d5cc;line-height:1.12;padding:3px 2px;text-align:center;vertical-align:middle;overflow-wrap:anywhere;font-size:8px}
+.sip-att-compact-table th{background:#eaf3ee;font-weight:800;color:#1a4837}
+.sip-att-compact-table .col-name{text-align:left}
+.sip-att-compact-table col.col-no{width:3%}
+.sip-att-compact-table col.col-nis{width:8%}
+.sip-att-compact-table col.col-name{width:18%}
+.sip-att-compact-table col.col-date{width:auto}
+.sip-att-compact-table col.col-total{width:3.2%}
+.sip-att-footer{display:flex;justify-content:space-between;gap:12px;border-top:1px solid #e0e9e3;margin-top:7px;padding-top:5px;font-size:8px;color:#62746a}
+@page sip-att-compact{size:A4 landscape;margin:5mm}
+@media print{
+ #sip-print-root .sip-att-pages{display:block!important}
+ #sip-print-root .sip-att-page{page:sip-att-compact;width:100%;height:auto;min-height:0;break-after:page;page-break-after:always;break-inside:avoid;page-break-inside:avoid;padding:0!important;margin:0!important;box-shadow:none!important}
+ #sip-print-root .sip-att-page:last-child{break-after:auto;page-break-after:auto}
+ #sip-print-root .sip-att-topline{padding:0 0 1.4mm!important}
+ #sip-print-root .sip-att-school img{width:23px;height:23px}
+ #sip-print-root .sip-att-titleline{padding:1.5mm 0 2mm!important}
+ #sip-print-root .sip-att-titleline h1{font-size:11pt!important;line-height:1.15!important}
+ #sip-print-root .sip-att-period{font-size:8pt!important;padding:3px 9px!important}
+ #sip-print-root .sip-att-compact-table{width:100%!important;table-layout:fixed!important}
+ #sip-print-root .sip-att-compact-table th,#sip-print-root .sip-att-compact-table td{font-size:6.2pt!important;padding:2px 1px!important;line-height:1.1!important;break-inside:avoid!important}
+ #sip-print-root .sip-att-compact-table td.col-name{font-size:6.4pt!important}
+ #sip-print-root .sip-att-compact-table thead{display:table-header-group}
+ #sip-print-root .sip-att-compact-table tbody tr{break-inside:avoid;page-break-inside:avoid}
+ #sip-print-root .sip-att-footer{font-size:6pt!important;margin-top:2mm!important;padding-top:1.2mm!important}
+}

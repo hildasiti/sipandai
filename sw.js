@@ -1,6 +1,6 @@
 /* SIPANDAI PWA v4.9 — SIMPAN HANYA BERKAS STATIS, BUKAN DATA PENGGUNA. */
 'use strict';
-const CACHE='sipandai-static-v4.11-kehadiran';
+const CACHE='sipandai-static-v4.11.1-kompak';
 const SHELL=['./','./index.html','./styles.css','./app.js','./excel.js','./config.js','./manifest.webmanifest','./icons/sipandai-logo6-192.png','./icons/sipandai-logo6-512.png','./icons/sipandai-logo6-256.png','./icons/favicon-logo6-32.png','./icons/apple-touch-logo6.png'];
 const allow=new Set(SHELL.map(path=>new URL(path,self.registration.scope).href));
 self.addEventListener('install',event=>{

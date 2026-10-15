@@ -1,4 +1,4 @@
-console.info('SIPANDAI v4.4 — Pengelolaan Akun, Kelas, dan Siswa');
+console.info('SIPANDAI v4.5 — Absensi otomatis & keandalan jaringan');
 'use strict';
 const S={token:'',user:null,home:null,view:'dashboard',classId:'',childId:'',additional:{},att:null,attEdit:false,attMode:'HARIAN',attDate:'',attMapel:'',sessionNo:'1',busy:false,menuCache:new Map(),needsHome:false,attRequest:0,learningTab:'journal'};
 try { S.token=sessionStorage.getItem('sipandai_token')||''; } catch(e) {}
@@ -256,22 +256,38 @@ function renderNotices(){const x=S.home,can=role('ADMIN','GURU_KELAS','GURU_MAPE
   html+=`<div class="card section-gap"><div class="panel-title">Daftar pengumuman <span class="pill">${x.notices.length}</span></div><div class="stack">${x.notices.map(n=>`<div class="item"><div class="item-head"><span class="pill ${n.status==='PUBLISHED'?'green':'yellow'}">${E(n.status==='PUBLISHED'?'Terbit':'Draft')}</span><span class="small muted">${E(n.createdAt.slice(0,10))} · ${E(n.scope==='SEKOLAH'?'Sekolah':className(n.classId))}</span></div><h3 style="margin-top:9px">${E(n.title)}</h3><p>${E(n.body)}</p>${can&&n.status==='DRAFT'&&(role('ADMIN')||n.authorId===S.user.id||role('GURU_KELAS'))?`<div class="actions"><button class="btn btn-sm btn-primary" data-action="publish-notice" data-id="${E(n.id)}">Terbitkan draft</button></div>`:''}${n.requireConfirm==='YES'?`<div class="section-gap">${parent? n.confirmed?'<span class="pill green">✓ Sudah dikonfirmasi</span>':`<button class="btn btn-sm btn-primary" data-action="confirm-notice" data-id="${E(n.id)}">Saya sudah membaca</button>`:'<span class="pill">Meminta konfirmasi orang tua</span>'}</div>`:''}</div>`).join('')||empty('Belum ada pengumuman.')}</div></div>`;setContent(html);
 }
 function renderAttendance(){if(role('GURU_MAPEL'))S.attMode='MAPEL';if(role('ORANG_TUA')){S.view='dashboard';render();return;}const x=S.home,mode=S.attMode,write=role('ADMIN','GURU_KELAS','GURU_MAPEL');if(!S.attDate)S.attDate=x.serverDate;if(!x.subjects.some(s=>s.id===S.attMapel))S.attMapel=x.subjects[0]?.id||'';
-  const html=head('Absensi siswa','Absensi harian hanya satu kali per kelas; absensi mapel dicatat per sesi.')+`<div class="card"><div class="form-grid"><div class="field"><label class="label">Jenis absensi</label><select id="att-mode">${role('GURU_MAPEL')?'':`<option value="HARIAN" ${mode==='HARIAN'?'selected':''}>Harian</option>`}<option value="MAPEL" ${mode==='MAPEL'?'selected':''}>Per mata pelajaran</option></select></div><div class="field"><label class="label">Tanggal</label><input id="att-date" type="date" value="${E(S.attDate)}"></div>${mode==='MAPEL'?`<div class="field"><label class="label">Mata pelajaran</label><select id="att-subject">${fillOptions(x.subjects,S.attMapel,'Pilih mapel')}</select></div><div class="field"><label class="label">Sesi</label><select id="att-session">${Array.from({length:5},(_,i)=>`<option value="${i+1}" ${S.sessionNo===String(i+1)?'selected':''}>Sesi ${i+1}</option>`).join('')}</select></div>`:''}</div><div class="actions"><button class="btn btn-primary" data-action="load-att">Tampilkan absensi</button></div></div><div id="att-content" class="section-gap">${loader()}</div>`;
+  const html=head('Absensi siswa','Absensi harian hanya satu kali per kelas; absensi mapel dicatat per sesi.')+`<div class="card"><div class="form-grid"><div class="field"><label class="label">Jenis absensi</label><select id="att-mode">${role('GURU_MAPEL')?'':`<option value="HARIAN" ${mode==='HARIAN'?'selected':''}>Harian</option>`}<option value="MAPEL" ${mode==='MAPEL'?'selected':''}>Per mata pelajaran</option></select></div><div class="field"><label class="label">Tanggal</label><input id="att-date" type="date" value="${E(S.attDate)}"></div>${mode==='MAPEL'?`<div class="field"><label class="label">Mata pelajaran</label><select id="att-subject">${fillOptions(x.subjects,S.attMapel,'Pilih mapel')}</select></div><div class="field"><label class="label">Sesi</label><select id="att-session">${Array.from({length:5},(_,i)=>`<option value="${i+1}" ${S.sessionNo===String(i+1)?'selected':''}>Sesi ${i+1}</option>`).join('')}</select></div>`:''}</div><div class="actions"><button class="btn btn-outline btn-sm" data-action="load-att">↻ Perbarui daftar</button><span class="small muted">Daftar muncul otomatis setelah tanggal dipilih.</span></div></div><div id="att-content" class="section-gap">${loader()}</div>`;
   setContent(html);
   const payload={classId:S.classId,date:S.attDate,mode:S.attMode,mapelId:S.attMapel,sessionNo:S.sessionNo};
   const cached=S.menuCache.get(menuCacheKey('attendance',payload));
   if(cached&&Date.now()<cached.until)paintAttendance(cached.value);
   else loadAttendance();
 }
-async function loadAttendance(){
+// v4.5: setiap perubahan tanggal, mapel, atau sesi memuat daftar secara otomatis.
+function changeAttendanceSelection(){
+  if(S.view!=='attendance'||!S.home)return;
+  const date=$('#att-date')?.value||'';
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;
+  const subject=$('#att-subject')?.value||S.attMapel;
+  const session=$('#att-session')?.value||S.sessionNo;
+  if(date===S.attDate&&subject===S.attMapel&&session===S.sessionNo)return;
+  S.attDate=date;S.attMapel=subject;S.sessionNo=session;
+  S.att=null;S.attEdit=false;S.pendingAttendance=null;
+  const area=$('#att-content');if(area)area.innerHTML=loader();
+  void loadAttendance();
+}
+async function loadAttendance(force=false){
+  const reqNo=++S.attRequest;
   if(!S.home.classId){const h=$('#att-content');if(h)h.innerHTML=empty(role('GURU_MAPEL')?'Belum ada kelas atau mapel yang ditugaskan kepada akun Anda. Minta Guru Kelas menetapkan pengampu pada menu Guru Mapel.':'Buat atau pilih kelas terlebih dahulu.');return;}
   if(S.attMode==='MAPEL'&&!S.attMapel){const h=$('#att-content');if(h)h.innerHTML=empty('Tidak ada mata pelajaran yang ditugaskan ke akun ini. Guru Kelas perlu mengatur pengampu.');return;}
   try{
     const req={classId:S.classId,date:S.attDate,mode:S.attMode,mapelId:S.attMapel,sessionNo:S.sessionNo};
-    const reqNo=++S.attRequest,res=await cachedCall('attendance',req,45000);
+    // Manual refresh bypasses the short browser cache. Normal navigation uses it.
+    const res=force?await call('attendance',req):await cachedCall('attendance',req,45000);
     if(reqNo!==S.attRequest||S.view!=='attendance')return;
+    if(force)S.menuCache.set(menuCacheKey('attendance',req),{value:res,until:Date.now()+45000});
     paintAttendance(res);
-  }catch(err){const h=$('#att-content');if(h)h.innerHTML='<div class="notice warning">'+E(err.message)+'</div>';}
+  }catch(err){if(reqNo!==S.attRequest||S.view!=='attendance')return;const h=$('#att-content');if(h)h.innerHTML='<div class="notice warning">'+E(err.message)+'</div>';}
 }
 function paintAttendance(res){
   S.att=res;
@@ -279,7 +295,44 @@ function paintAttendance(res){
   const unlocked=res.editable&&(!res.hasSaved||S.attEdit);
   const area=$('#att-content');if(!area)return;
   if(!res.rows.length){area.innerHTML=empty('Belum ada siswa di kelas ini.');return;}
-  area.innerHTML=`<div class="card"><div class="row-between"><div><h2>Daftar kehadiran</h2><p class="small muted">${res.hasSaved?(unlocked?'Sedang mengedit absensi yang tersimpan.':'✓ Absensi sudah tersimpan dan terkunci. Klik Edit Absensi jika perlu koreksi.'):'Belum disimpan. Semua siswa disiapkan sebagai Hadir.'}</p></div>${unlocked?'<button class="btn btn-sm" data-action="all-present">Semua hadir</button>':''}</div><form id="attendance-form"><div class="att-list section-gap">${res.rows.map((r,i)=>`<div class="att-student" data-student-id="${E(r.id)}"><div class="att-person"><span class="att-number">${i+1}</span><div><b>${E(r.name)}</b><span class="att-nis">NIS ${E(r.nis)}</span></div></div><div class="att-controls"><select class="att-status att-hidden-select" aria-label="Kehadiran ${E(r.name)}" ${unlocked?'':'disabled'}>${[['H','Hadir'],['S','Sakit'],['I','Izin'],['A','Alpa']].map(([v,t])=>`<option value="${v}" ${r.status===v?'selected':''}>${t}</option>`).join('')}</select><div class="att-choice" role="group" aria-label="Status kehadiran ${E(r.name)}">${[['H','Hadir'],['S','Sakit'],['I','Izin'],['A','Alpa']].map(([v,t])=>`<button type="button" class="att-choice-btn ${r.status===v?'selected':''} ${'att-'+v}" data-action="select-att-status" data-status="${v}" aria-pressed="${r.status===v}" ${unlocked?'':'disabled'}>${t}</button>`).join('')}</div><button type="button" class="att-note-toggle" data-action="toggle-att-note" title="Catatan siswa" aria-label="Buka catatan ${E(r.name)}">✎</button></div><div class="att-note-container" style="display:${r.note?'block':'none'}"><input class="att-note" value="${E(r.note)}" maxlength="200" placeholder="Catatan (opsional)" ${unlocked?'':'disabled'}></div></div>`).join('')}</div>${unlocked?`<div class="actions section-gap"><button class="btn btn-primary" type="submit">${res.hasSaved?'Simpan perubahan':'Simpan semua absensi'}</button>${res.hasSaved?'<button type="button" class="btn" data-action="cancel-att-edit">Batal edit</button>':''}</div>`:res.editable&&res.hasSaved?'<div class="actions section-gap"><span class="pill green">✓ Tersimpan · terkunci</span><button type="button" class="btn" data-action="edit-attendance">Edit Absensi</button></div>':'<p class="hint">Hanya tersedia untuk monitoring.</p>'}</form></div>`;
+  area.innerHTML=`<div class="card"><div class="row-between"><div><h2>Daftar kehadiran</h2><p class="small muted">${res.hasSaved?(unlocked?'Sedang mengedit absensi yang tersimpan.':'✓ Tersimpan'):'Belum disimpan. Semua siswa disiapkan sebagai Hadir.'}</p></div>${unlocked?'<button class="btn btn-sm" data-action="all-present">Semua hadir</button>':''}</div><form id="attendance-form"><div class="att-list section-gap">${res.rows.map((r,i)=>`<div class="att-student" data-student-id="${E(r.id)}"><div class="att-person"><span class="att-number">${i+1}</span><div><b>${E(r.name)}</b><span class="att-nis">NIS ${E(r.nis)}</span></div></div><div class="att-controls"><select class="att-status att-hidden-select" aria-label="Kehadiran ${E(r.name)}" ${unlocked?'':'disabled'}>${[['H','Hadir'],['S','Sakit'],['I','Izin'],['A','Alpa']].map(([v,t])=>`<option value="${v}" ${r.status===v?'selected':''}>${t}</option>`).join('')}</select><div class="att-choice" role="group" aria-label="Status kehadiran ${E(r.name)}">${[['H','Hadir'],['S','Sakit'],['I','Izin'],['A','Alpa']].map(([v,t])=>`<button type="button" class="att-choice-btn ${r.status===v?'selected':''} ${'att-'+v}" data-action="select-att-status" data-status="${v}" aria-pressed="${r.status===v}" ${unlocked?'':'disabled'}>${t}</button>`).join('')}</div><button type="button" class="att-note-toggle" data-action="toggle-att-note" title="Catatan siswa" aria-label="Buka catatan ${E(r.name)}">✎</button></div><div class="att-note-container" style="display:${r.note?'block':'none'}"><input class="att-note" value="${E(r.note)}" maxlength="200" placeholder="Catatan (opsional)" ${unlocked?'':'disabled'}></div></div>`).join('')}</div>${unlocked?`<div class="actions section-gap"><button class="btn btn-primary" type="submit">${res.hasSaved?'Simpan perubahan':'Simpan semua absensi'}</button>${res.hasSaved?'<button type="button" class="btn" data-action="cancel-att-edit">Batal edit</button>':''}</div>`:res.editable&&res.hasSaved?'<div class="actions section-gap"><span class="pill green">✓ Tersimpan</span><button type="button" class="btn" data-action="edit-attendance">Edit Absensi</button></div>':'<p class="hint">Hanya tersedia untuk monitoring.</p>'}</form></div>`;
+}
+// Bukti simpan dicocokkan dengan seluruh siswa, bukan hanya satu atau dua baris.
+function savedAttendanceMatches(result,rows){
+  if(!result?.hasSaved||!Array.isArray(result.rows)||result.rows.length!==rows.length)return false;
+  const byId=new Map(result.rows.map(x=>[x.id,x]));
+  return rows.every(x=>{const r=byId.get(x.studentId);return r&&r.status===x.status&&String(r.note||'').trim()===String(x.note||'').trim();});
+}
+function attendanceSavedUi(snapshot,rows,context){
+  S.attEdit=false;S.pendingAttendance=null;
+  S.needsHome=false;
+  if(context.mode==='HARIAN'&&context.classId===S.classId&&context.date===S.home?.serverDate){
+    S.home.stats.present=rows.filter(x=>x.status==='H').length;
+    S.home.stats.todayRecorded=rows.length;
+  }
+  S.menuCache.set(menuCacheKey('attendance',context),{value:snapshot,until:Date.now()+45000});
+  if(S.view==='attendance'&&S.classId===context.classId&&S.attDate===context.date)paintAttendance(snapshot);
+}
+async function verifyAttendanceAfterError(context,rows,initialError){
+  // Jangan otomatis ulangi write; respons 502 bisa datang setelah Apps Script sudah menulis.
+  S.pendingAttendance={context,rows};
+  try{
+    const fresh=await call('attendance',context);
+    if(savedAttendanceMatches(fresh,rows)){
+      attendanceSavedUi(fresh,rows,context);
+      toast('Absensi telah tersimpan. Respons jaringan sempat terputus.');
+      return;
+    }
+    if(S.view==='attendance'&&S.classId===context.classId&&S.attDate===context.date){
+      const f=$('#attendance-form');
+      if(f&&!$('#att-verify-warning')){
+        const notice=document.createElement('div');notice.id='att-verify-warning';notice.className='notice warning';
+        notice.innerHTML='<strong>Status penyimpanan belum pasti.</strong><p>Jangan tutup halaman atau mengirim ulang sebelum memeriksa. Isian Anda tetap dipertahankan.</p><button type="button" class="btn btn-outline btn-sm" data-action="verify-attendance">Periksa status</button>';
+        f.prepend(notice);
+      }
+    }
+    toast('Simpan belum dapat dikonfirmasi: '+initialError.message,true);
+  }catch(e){toast('Server belum dapat dihubungi. Isian tetap tersedia; periksa status setelah koneksi pulih.',true);}
 }
 function renderBehaviors(){const x=S.home,parent=role('ORANG_TUA'),can=role('ADMIN','GURU_KELAS','GURU_MAPEL');let html=head('Catatan perilaku','Apresiasi hal positif dan pendampingan yang perlu perhatian.');
   if(can)html+=`<div class="card"><div class="panel-title">Tambah catatan</div><form id="behavior-form"><div class="form-grid"><div class="field"><label class="label">Siswa</label><select name="studentId" required>${fillOptions(x.students,'','Pilih siswa')}</select></div><div class="field"><label class="label">Kategori</label><select name="kind"><option value="POSITIF">Positif / apresiasi</option><option value="PEMBINAAN">Perlu pembinaan</option></select></div><div class="wide field"><label class="label">Deskripsi kejadian</label><textarea name="description" maxlength="2500" required placeholder="Tuliskan kejadian secara objektif..."></textarea></div><div class="wide field"><label class="label">Tindak lanjut (opsional)</label><textarea name="followUp" maxlength="1200" placeholder="Pendampingan guru atau yang dapat dilakukan di rumah..."></textarea></div><div class="field"><label class="label">Dokumentasi (opsional)</label><input type="file" id="behavior-file" accept="image/jpeg,image/png,application/pdf"><p class="hint">Foto JPG/PNG atau PDF, maksimal 3 MB.</p></div><div class="field"><label class="label">Publikasi</label><select name="status"><option value="DRAFT">Draft / untuk internal</option><option value="PUBLISHED">Terlihat oleh orang tua</option></select></div></div><button type="submit" class="btn btn-primary">Simpan catatan</button></form></div>`;
@@ -807,23 +860,22 @@ document.addEventListener('submit',async ev=>{
     const rows=[...f.querySelectorAll('.att-student[data-student-id]')].map(tr=>({studentId:tr.dataset.studentId,status:tr.querySelector('.att-status').value,note:tr.querySelector('.att-note').value}));
     const oldAttendance=S.att;
     const savedContext={classId:S.classId,date:S.attDate,mode:S.attMode,mapelId:S.attMapel,sessionNo:S.sessionNo};
-    const result=await submitAction('saveAttendance',{...savedContext,rows,edit:!!oldAttendance?.hasSaved&&S.attEdit},{refresh:false});
-    if(result){
-      // One authoritative successful save response is enough to lock the form.
-      // Re-fetch only when teacher explicitly taps Refresh / changes date.
+    if(S.busy)return;
+    try{
+      busy(true);processMessage('Menyimpan absensi siswa…');
+      await call('saveAttendance',{...savedContext,rows,edit:!!oldAttendance?.hasSaved&&S.attEdit});
+      forgetMenuCache('attendance');
       const byId=new Map(rows.map(x=>[x.studentId,x]));
       const snapshot={...oldAttendance,hasSaved:true,rows:(oldAttendance?.rows||[]).map(s=>({...s,...byId.get(s.id)}))};
-      S.attEdit=false;
-      S.needsHome=false; // Home figures are patched below; skip a second full bootstrap.
-      if(S.attMode==='HARIAN'&&S.attDate===S.home?.serverDate){
-        S.home.stats.present=rows.filter(x=>x.status==='H').length;
-        S.home.stats.todayRecorded=rows.length;
-      }
-      // Do not cache an unfinished or optimistic request: backend already confirmed success.
-      const key=menuCacheKey('attendance',savedContext);
-      S.menuCache.set(key,{value:snapshot,until:Date.now()+45000});
-      paintAttendance(snapshot);
-    }
+      attendanceSavedUi(snapshot,rows,savedContext);
+      toast('Absensi tersimpan.');
+    }catch(e){
+      // Jaringan/502: jangan menyimpan ulang secara otomatis. Cek hasil dari backend.
+      if(/502|503|504|Gateway|jaringan|menghubungi|respons|melewati|server|upstream|Apps Script|HTTP/i.test(e.message)){
+        processMessage('Memeriksa hasil penyimpanan…');
+        await verifyAttendanceAfterError(savedContext,rows,e);
+      }else toast(e.message,true);
+    }finally{busy(false);}
     return;
   }
   if(formId==='behavior-form'){try{busy(true);const file=await readFile($('#behavior-file')?.files[0]);await submitAction('saveBehavior',{...d,file,classId:S.classId});}catch(e){toast(e.message,true);}finally{busy(false);}return;}
@@ -929,7 +981,14 @@ document.addEventListener('click',async ev=>{
   if(action==='confirm-notice')return submitAction('confirmNotice',{noticeId:b.dataset.id});
   if(action==='publish-notice')return submitAction('publishNotice',{id:b.dataset.id});
   if(action==='publish-behavior')return submitAction('publishBehavior',{id:b.dataset.id});
-  if(action==='load-att'){S.attEdit=false;S.attDate=$('#att-date')?.value||S.home.serverDate;S.attMapel=$('#att-subject')?.value||S.attMapel;S.sessionNo=$('#att-session')?.value||'1';$('#att-content').innerHTML=loader();return loadAttendance();}
+  if(action==='load-att'){S.attEdit=false;S.attDate=$('#att-date')?.value||S.home.serverDate;S.attMapel=$('#att-subject')?.value||S.attMapel;S.sessionNo=$('#att-session')?.value||'1';S.pendingAttendance=null;$('#att-content').innerHTML=loader();return loadAttendance(true);}
+  if(action==='verify-attendance'){
+    const pending=S.pendingAttendance;if(!pending||S.busy)return;
+    try{busy(true);processMessage('Memeriksa status absensi…');const r=await call('attendance',pending.context);
+      if(savedAttendanceMatches(r,pending.rows)){attendanceSavedUi(r,pending.rows,pending.context);toast('Absensi tersimpan.');}
+      else toast('Absensi belum dapat dikonfirmasi. Jika masih belum tersimpan, Anda dapat mencoba simpan lagi.',true);
+    }catch(e){toast(e.message,true);}finally{busy(false);}return;
+  }
   if(action==='select-att-status'){
      const card=b.closest('.att-student');const select=card?.querySelector('.att-status');if(!select||select.disabled)return;
      select.value=b.dataset.status;card.querySelectorAll('.att-choice-btn').forEach(btn=>{const active=btn.dataset.status===select.value;btn.classList.toggle('selected',active);btn.setAttribute('aria-pressed',String(active));});return;
@@ -951,7 +1010,8 @@ document.addEventListener('change',ev=>{
  if(ev.target.id==='family-class'){FAMILY.classFilter=ev.target.value;FAMILY.page=1;paintFamilyList();return;}
  if(ev.target.id==='family-link-class'){FAMILY.linkClassId=ev.target.value;void updateFamilyStudentChoices();return;}
  if(ev.target.id==='family-parent-select'){FAMILY.selectedParentId=ev.target.value;return;}
- if(ev.target.id==='progress-student'){S.progress.studentId=ev.target.value;loadProgress();return;}if(ev.target.id==='task-pick-student'){loadTaskDetail(S.v2.taskId,ev.target.value);return;}if(ev.target.id==='switch-class'){clearTahDom();S.progress.lastKey='';S.classId=ev.target.value;S.v2.assessmentId='';S.v2.taskId='';S.attMapel='';S.att=null;S.attEdit=false;setContent(head('Menyiapkan kelas', 'Memuat data dan pengampu kelas yang dipilih…')+loader());loadHome().catch(e=>toast(e.message,true));}if(ev.target.id==='att-mode'){S.attMode=ev.target.value;S.att=null;S.attEdit=false;renderAttendance();}});
+ if(['att-date','att-subject','att-session'].includes(ev.target.id)){changeAttendanceSelection();return;}
+ if(ev.target.id==='progress-student'){S.progress.studentId=ev.target.value;loadProgress();return;}if(ev.target.id==='task-pick-student'){loadTaskDetail(S.v2.taskId,ev.target.value);return;}if(ev.target.id==='switch-class'){clearTahDom();S.progress.lastKey='';S.classId=ev.target.value;S.v2.assessmentId='';S.v2.taskId='';S.attMapel='';S.att=null;S.attEdit=false;setContent(head('Menyiapkan kelas', 'Memuat data dan pengampu kelas yang dipilih…')+loader());loadHome().catch(e=>toast(e.message,true));}if(ev.target.id==='att-mode'){S.attMode=ev.target.value;S.att=null;S.attEdit=false;S.pendingAttendance=null;renderAttendance();}});
 (async()=>{if(!S.token){loginUI();return;}try{await loadHome();prefetchTodayAttendance();}catch(e){S.token='';try{sessionStorage.removeItem('sipandai_token');}catch(x){}loginUI();toast('Sesi berakhir. Silakan login kembali.',true);}})();
 
 /* SIPANDAI v3.5: laporan dan cetak via browser; ekspor tabel ke CSV kompatibel Excel. */

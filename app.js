@@ -105,7 +105,7 @@ function menuCacheKey(action,payload={}){return [S.user?.id||'',S.classId,action
 const pendingMenuRequests=new Map();
 function cachedCall(action,payload={},ttl=30000){
   const key=menuCacheKey(action,payload),item=S.menuCache.get(key);
-  if(item&&Date.now()<item.until)return Promise.resolve(item.value);
+  if(ttl!==0&&item&&Date.now()<item.until)return Promise.resolve(item.value);
   if(pendingMenuRequests.has(key))return pendingMenuRequests.get(key);
   const request=call(action,payload).then(value=>{
     S.menuCache.set(key,{value,until:Date.now()+ttl});
@@ -209,6 +209,20 @@ function prefetchTodayAttendance(){
     if(!S.user||S.user.id!==identity||S.classId!==klass||S.home?.serverDate!==day)return;
     cachedCall('attendance',{classId:klass,date:day,mode:m,mapelId:s||'',sessionNo:S.sessionNo},45000).catch(()=>{});
   },450);
+}
+// v4.12 — Persiapkan ringkasan Tahfidz sesudah Beranda tampil; satu request.
+// Tidak menyimpan data pribadi secara persisten, dan hasil hanya berada di memori sesi.
+function prefetchTahfidz(){
+  if(!S.user||!S.home||role('ORANG_TUA')||!S.classId)return;
+  const userId=S.user.id,classId=S.classId,period=(S.home.serverDate||'').slice(0,7);
+  setTimeout(()=>{
+    if(!S.user||S.user.id!==userId||S.classId!==classId||!S.token||!period)return;
+    // Prefetch tetap berjalan setelah guru berpindah menu; hasilnya dibatasi akun/kelas.
+    const payload={classId,period};
+    const key=menuCacheKey('tahDashboard',payload);
+    if(S.menuCache.has(key)||pendingMenuRequests.has(key))return;
+    cachedCall('tahDashboard',payload,45000).catch(()=>{});
+  },1600);
 }
 function render(){if(!S.home)return;document.querySelectorAll('[data-action=nav]').forEach(el=>el.classList.toggle('active',el.dataset.view===S.view||(el.dataset.view==='learning'&&isLearningView(S.view))));switch(S.view){case 'tahfidz':return renderTahfidz();case 'journal':return renderJournal();case 'assessments':return renderAssessments();case 'tasks':return renderTasks();case 'progress':return renderProgress();case 'dashboard':return renderDashboard();case 'printing':if(role('ORANG_TUA')){S.view='dashboard';return renderDashboard();}return renderPrinting();case 'notices':return renderNotices();case 'attendance':return renderAttendance();case 'behaviors':return renderBehaviors();case 'students':return renderStudents();case 'teachers':return renderTeachers();case 'parents':return renderParents();case 'requests':S.view='parents';FAMILY.tab='requests';return renderParents();case 'users':return renderUsers();case 'classes':return renderClasses();case 'settings':return renderSettings();default:S.view='dashboard';renderDashboard();}}
 const LEARNING_VIEWS=['attendance','journal','assessments','tasks','behaviors'];
@@ -1011,8 +1025,8 @@ document.addEventListener('submit',async ev=>{
    if(r.user.mustChangePassword)passwordUI();
    else if(r.home){
      S.home=r.home;S.user=r.home.user;S.needsHome=false;S.classId=r.home.classId;S.childId=r.home.currentChild?.id||'';
-     baseUI();render();prefetchTodayAttendance();
-   }else {await loadHome();prefetchTodayAttendance();}
+     baseUI();render();prefetchTodayAttendance();prefetchTahfidz();
+   }else {await loadHome();prefetchTodayAttendance();prefetchTahfidz();}
    console.info('SIPANDAI: login & halaman awal '+(Date.now()-loginStarted)+' ms (termasuk respons jaringan)',r.perf||'');}catch(e){toast(e.message,true);}finally{busy(false);}return;}
   if(formId==='change-password-form'){const r=await submitAction('changePassword',d,{refresh:false});if(r?.ok){S.token='';try{sessionStorage.removeItem('sipandai_token');}catch(e){}loginUI();toast('Password diganti. Silakan login dengan password baru.');}return;}
   if(formId==='user-form'){
@@ -1243,7 +1257,7 @@ document.addEventListener('change',ev=>{
  if(ev.target.id==='family-parent-select'){FAMILY.selectedParentId=ev.target.value;return;}
  if(['att-date','att-subject','att-session'].includes(ev.target.id)){changeAttendanceSelection();return;}
  if(ev.target.id==='progress-student'){S.progress.studentId=ev.target.value;loadProgress();return;}if(ev.target.id==='task-pick-student'){loadTaskDetail(S.v2.taskId,ev.target.value);return;}if(ev.target.id==='switch-class'){clearTahDom();S.progress.lastKey='';S.classId=ev.target.value;S.v2.assessmentId='';S.v2.taskId='';S.attMapel='';S.att=null;S.attEdit=false;setContent(head('Menyiapkan kelas', 'Memuat data dan pengampu kelas yang dipilih…')+loader());loadHome().catch(e=>toast(e.message,true));}if(ev.target.id==='att-mode'){S.attMode=ev.target.value;S.att=null;S.attEdit=false;S.pendingAttendance=null;renderAttendance();}});
-(async()=>{if(!S.token){loginUI();return;}try{await loadHome();prefetchTodayAttendance();}catch(e){S.token='';try{sessionStorage.removeItem('sipandai_token');}catch(x){}loginUI();toast('Sesi berakhir. Silakan login kembali.',true);}})();
+(async()=>{if(!S.token){loginUI();return;}try{await loadHome();prefetchTodayAttendance();prefetchTahfidz();}catch(e){S.token='';try{sessionStorage.removeItem('sipandai_token');}catch(x){}loginUI();toast('Sesi berakhir. Silakan login kembali.',true);}})();
 
 /* SIPANDAI v4.10 — Cetak horizontal dan Excel asli untuk e-Rapor. */
 let printableData=null;
@@ -1604,8 +1618,9 @@ async function loadTahfidz(refresh=false){
  const parent=role('ORANG_TUA'),classId=S.classId,studentId=parent?S.childId:TAH.studentId,req=++TAH.request;
  try{
   if(parent){const detail=await cachedCall('tahStudentReport',{classId,studentId},refresh?0:25000);if(req!==TAH.request||S.view!=='tahfidz')return;TAH.detail=detail;$('#tah-main').innerHTML=tahParentMarkup(detail);return;}
-  const [settings,klass]=await Promise.all([cachedCall('tahSettings',{classId},refresh?0:30000),cachedCall('tahClassReport',{classId,period:TAH.period||(S.home?.serverDate||'').slice(0,7)},refresh?0:20000)]);
-  if(req!==TAH.request||S.view!=='tahfidz')return;
+  const period=TAH.period||(S.home?.serverDate||'').slice(0,7);
+  const {settings,klass}=await cachedCall('tahDashboard',{classId,period},refresh?0:45000);
+  if(req!==TAH.request||S.view!=='tahfidz'||S.classId!==classId)return;
   TAH.settings=settings;TAH.klass=klass;drawTahTeacher();
   if(['entry','students'].includes(TAH.tab))await tahLoadStudent(false);
  }catch(err){const h=$('#tah-main');if(h)h.innerHTML=`<div class="notice warning">Tidak dapat memuat Tahfidz: ${E(err.message)}. Pastikan upgradeDatabaseV36() telah dijalankan.</div>`;}
@@ -1644,7 +1659,7 @@ async function tahLoadStudent(refresh=false){
  try{const r=await cachedCall('tahStudentReport',{classId,studentId},refresh?0:20000);if(req!==TAH.request||S.view!=='tahfidz')return;TAH.detail=r;if(h)h.innerHTML=tahDetailMarkup(r);tahSuggestNext(r);}
  catch(e){if(h)h.innerHTML=`<div class="notice warning">${E(e.message)}</div>`;}
 }
-function tahInvalidate(){forgetMenuCache('tahSettings','tahClassReport','tahStudentReport','printData');TAH.klass=null;TAH.detail=null;TAH.savedDom=null;}
+function tahInvalidate(){forgetMenuCache('tahDashboard','tahSettings','tahClassReport','tahStudentReport','printData');TAH.klass=null;TAH.detail=null;TAH.savedDom=null;}
 async function tahSave(action,data){
  try{busy(true);processMessage('Menyimpan catatan Tahfidz…');const r=await call(action,{...data,classId:S.classId});if(!r?.ok)throw new Error('Server tidak mengonfirmasi penyimpanan.');tahInvalidate();toast('Catatan Tahfidz berhasil disimpan.');await loadTahfidz(true);return r;}
  catch(e){toast('Tidak tersimpan: '+e.message,true);return null;}finally{busy(false);}

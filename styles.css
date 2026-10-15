@@ -146,3 +146,68 @@ html,body{min-height:100%;width:100%;}
 .family-child-chip{display:inline-flex;padding:6px 10px;border-radius:99px;background:#eaf4ee;color:#245e4d;font-size:11px;line-height:1.35}
 .family-pagination{border-top:1px solid var(--line);margin-top:12px}
 @media(max-width:640px){.family-filters{grid-template-columns:1fr}.family-parent-main{display:block}.family-parent-actions{margin-top:10px}.family-parent-actions .btn{flex:1}.family-resultbar{gap:6px}}
+
+/* SIPANDAI v4.2 — compact mobile UI. Hanya presentasi, tanpa mengubah alur backend. */
+.dashboard-class-banner{display:flex;align-items:center;gap:10px;background:#eaf5ee;border:1px solid #d6e8de;border-radius:12px;padding:10px 14px;font-size:13px;line-height:1.4;color:#335e50;min-width:0}
+.dashboard-class-banner .class-icon{display:grid;place-items:center;flex:0 0 29px;width:29px;height:29px;border-radius:8px;background:#d6eadd;color:var(--green2);font-size:17px}
+.dashboard-class-banner .class-info{min-width:0;overflow-wrap:anywhere}
+.page-header.compact-module{margin-bottom:13px}
+.page-header.compact-module p{margin-top:3px;font-size:13px;line-height:1.4}
+.module-tabs,.tah-tabs{margin-top:0;margin-bottom:15px;scroll-margin-top:8px}
+@media(max-width:760px){
+  .main-content{padding:17px 14px calc(99px + env(safe-area-inset-bottom));}
+  .page-header{margin-bottom:12px;gap:7px}
+  .page-header h1{font-size:23px;line-height:1.25;letter-spacing:-.45px}
+  .page-header p{margin-top:3px;font-size:12px;line-height:1.4}
+  .page-header.compact-module{margin-bottom:11px}
+  .page-header.compact-module p{display:none}
+  .module-tabs,.tah-tabs{position:relative;top:auto;z-index:1;margin:0 0 12px;padding:5px;gap:3px;border-radius:11px;scrollbar-width:none;box-shadow:none;-webkit-overflow-scrolling:touch}
+  .module-tabs::-webkit-scrollbar,.tah-tabs::-webkit-scrollbar{display:none}
+  .module-tab,.tah-tab{min-height:38px;padding:7px 11px;font-size:12px;gap:6px;border-radius:8px}
+  .tah-tab-icon{font-size:14px}
+  .card{padding:14px;border-radius:13px}
+  .grid{gap:11px}
+  .section-gap{margin-top:12px}
+  .panel-title{margin-bottom:10px}
+  .stack{gap:8px}
+  .item{padding:11px;border-radius:10px}
+  .actions{margin-top:9px;gap:7px}
+  .notice{padding:11px 12px;font-size:12px;line-height:1.45}
+  .dashboard-class-banner{margin-bottom:0;padding:8px 10px;border-radius:10px;font-size:12px}
+  .dashboard-class-banner .class-icon{width:26px;height:26px;flex-basis:26px}
+  .dashboard-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:11px}
+  .dashboard-stats .stat{min-height:84px;padding:12px 13px;display:flex;flex-direction:column;justify-content:center;gap:2px}
+  .dashboard-stats .stat .meta{font-size:11px;line-height:1.25}
+  .dashboard-stats .stat .value{font-size:26px;line-height:1.1;letter-spacing:-.7px}
+  .dashboard-stats .stat .meta:last-child:empty{display:none}
+  .dashboard-stats .stat .meta:last-child:not(:empty){font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dashboard-feeds{gap:11px;margin-top:12px}
+  .dashboard-feeds>.card{min-width:0}
+  .dashboard-feeds .item:nth-child(n+2){display:none}
+  .dashboard-feeds .panel-title{font-size:14px;gap:6px}
+  .dashboard-feeds .panel-title .btn{font-size:11px;white-space:nowrap}
+  .tah-intro-card{padding:12px;gap:9px}
+  .tah-intro-card .hint{font-size:11px;line-height:1.4;margin-top:3px}
+  .print-main-grid .card{min-width:0}
+  .print-main-grid .hint{margin-top:3px}
+}
+@media(max-width:370px){
+ .main-content{padding-left:11px;padding-right:11px}
+ .dashboard-stats .stat{padding:10px 11px}
+ .dashboard-stats .stat .value{font-size:24px}
+ .page-header h1{font-size:21px}
+}
+
+/* Further compactness for Tahfidz overview and context-aware printing. */
+.tah-summary-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+#print-form [data-print-field][hidden]{display:none!important}
+@media(max-width:760px){
+ #tah-pane-overview .grid3{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+ #tah-pane-overview .grid3 .stat{min-height:89px;padding:10px 8px;display:flex;flex-direction:column;justify-content:center;gap:5px}
+ #tah-pane-overview .grid3 .stat .meta{font-size:10px;line-height:1.25}
+ #tah-pane-overview .grid3 .stat .meta:empty{display:none}
+ #tah-pane-overview .grid3 .stat .value{font-size:23px;line-height:1.1}
+ .tah-summary-toolbar{margin-bottom:2px}
+ .print-main-grid #print-group-description{display:none}
+ .print-main-grid #print-form{margin-top:9px}
+}

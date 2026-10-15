@@ -1,4 +1,4 @@
-console.info('SIPANDAI v4.1 — Admin Keluarga & Pencarian');
+console.info('SIPANDAI v4.2 — Compact Mobile UI');
 'use strict';
 const S={token:'',user:null,home:null,view:'dashboard',classId:'',childId:'',additional:{},att:null,attEdit:false,attMode:'HARIAN',attDate:'',attMapel:'',sessionNo:'1',busy:false,menuCache:new Map(),needsHome:false,attRequest:0,learningTab:'journal'};
 try { S.token=sessionStorage.getItem('sipandai_token')||''; } catch(e) {}
@@ -69,13 +69,16 @@ async function call(action,payload={}){
   if(S.busy)processMessage(processLabel(action));
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),120000);
+  const requestStarted=performance.now();
   try{
     const response=await fetch(endpoint,{
       method:'POST',
       mode:'cors',
       cache:'no-store',
       credentials:'omit',
-      headers:{'Content-Type':'application/json'},
+      // A simple CORS POST avoids a separate OPTIONS preflight. Worker validates
+      // Origin, JSON payload, session token, and the backend bridge secret.
+      headers:{'Content-Type':'text/plain;charset=UTF-8'},
       body:JSON.stringify({action,payload,token:S.token||''}),
       signal:controller.signal
     });
@@ -90,7 +93,11 @@ async function call(action,payload={}){
     if(err?.name==='AbortError')throw new Error('Permintaan melewati 120 detik. Cek data sebelum mencoba menyimpan ulang.');
     if(err instanceof TypeError)throw new Error('Tidak dapat menghubungi API SIPANDAI. Periksa koneksi, Worker, dan pengaturan domain GitHub Pages.');
     throw err;
-  }finally{clearTimeout(timer);}
+  }finally{
+    clearTimeout(timer);
+    const elapsed=Math.round(performance.now()-requestStarted);
+    console.info('[SIPANDAI_PERF]',action,'roundtrip_ms='+elapsed);
+  }
 }
 // Cache antarmuka singkat: pindah menu tidak selalu menunggu API.
 // Key termasuk identitas pengguna + kelas + parameter, sehingga tidak tertukar.
@@ -132,7 +139,7 @@ async function submitAction(action,data,opt={}){
     busy(true);
     const res=await call(action,data);
     if(['createUser','resetPassword','createClass','createSubject','addStudent','assignTeacher','linkParent','reviewRequest','requestLink','saveNotice','publishNotice','confirmNotice','saveBehavior','publishBehavior','saveAttendance'].includes(action)){
-      S.needsHome=true;
+      if(action!=='saveAttendance') S.needsHome=true;
       if(action==='saveAttendance')forgetMenuCache('attendance');
       if(['linkParent','resetPassword'].includes(action))forgetMenuCache('parents');
       if(action==='reviewRequest'||action==='requestLink')forgetMenuCache('requests');
@@ -145,7 +152,12 @@ async function submitAction(action,data,opt={}){
 }
 function showCredential(c){const node=$('#credential-box');if(node){node.innerHTML=`<div class="credential"><b>Simpan dan sampaikan secara privat</b><div class="section-gap">Username: <code>${E(c.username)}</code></div><div>Password sementara: <code>${E(c.password)}</code></div><p class="hint">Password ini hanya ditampilkan sekali. Pemilik akun harus menggantinya saat login pertama.</p><button type="button" class="btn btn-sm" data-action="copy-credential" data-value="${E('Username: '+c.username+'\nPassword: '+c.password)}">Salin kredensial</button></div>`;node.scrollIntoView({behavior:'smooth',block:'nearest'});}else{void sipAlert('Username: '+c.username+'\nPassword: '+c.password+'\n\nSimpan dengan aman.',{title:'Kredensial akun'});}}
 function fillOptions(arr,selected='',placeholder='Pilih...'){return `<option value="">${E(placeholder)}</option>`+arr.map(x=>`<option value="${E(x.id)}" ${String(x.id)===String(selected)?'selected':''}>${E(x.name)}</option>`).join('');}
-function head(title,description,action=''){return `<div class="page-header"><div><h1>${E(title)}</h1><p>${E(description)}</p></div>${action}</div>`;}
+function head(title,description,action=''){
+  const module=isLearningView(S.view)||['tahfidz','printing'].includes(S.view);
+  const moduleTitle=isLearningView(S.view)?(role('ORANG_TUA')?'Pembelajaran':'Teacher Planner'):title;
+  const compactDesc=isLearningView(S.view)?'Absensi, jurnal, penilaian, tugas, dan perilaku.':description;
+  return `<div class="page-header${module?' compact-module':''}"><div><h1>${E(moduleTitle)}</h1>${compactDesc?`<p>${E(compactDesc)}</p>`:''}</div>${action}</div>`;
+}
 function empty(msg){return `<div class="empty">${E(msg)}</div>`;}
 function loader(){return '<div class="loader sip-data-loader" role="status"><div class="sip-loader-art"><span></span><span></span><span></span></div><strong>Menyiapkan data…</strong><span class="small muted">Mengambil informasi dari Spreadsheet</span></div>';}
 const MENUS={learning:['▤','Teacher Planner'],progress:['◴','Perkembangan'],journal:['▤','Teacher Planner'],assessments:['◈','Asesmen & Nilai'],tasks:['▧','Penugasan'],dashboard:['◫','Beranda'],notices:['◉','Pengumuman'],attendance:['▦','Absensi'],behaviors:['♡','Perilaku'],tahfidz:['◉','Tahfidz'],students:['♧','Siswa'],teachers:['▤','Guru Mapel'],parents:['⌂','Keluarga'],requests:['✓','Verifikasi'],users:['♙','Akun Guru'],classes:['▣','Kelas & Mapel'],printing:['▤','Cetak & Laporan'],settings:['⚙','Pengaturan'],more:['☰','Lainnya']};
@@ -185,6 +197,18 @@ function loginUI(){S.user=null;$('#app').innerHTML=`<div class="login-wrap"><div
 function passwordUI(){ $('#app').innerHTML=`<div class="login-wrap"><div class="login-card"><div class="brand"><span class="logo">S</span><b class="logo-name">SIPANDAI</b></div><h1>Ganti password awal</h1><p class="muted">Untuk menjaga data siswa, password sementara wajib diganti sebelum mengakses aplikasi.</p>${changePasswordForm()}<button class="btn btn-outline btn-full section-gap" data-action="logout">Keluar akun</button></div></div>`;}
 function changePasswordForm(){return `<form id="change-password-form"><div class="field"><label class="label">Password saat ini</label><input type="password" name="oldPassword" required autocomplete="current-password"></div><div class="field"><label class="label">Password baru</label><input type="password" name="newPassword" minlength="5" required autocomplete="new-password" placeholder="Minimal 5 karakter; angka, huruf, atau campuran"></div><button class="btn btn-primary" type="submit">Simpan password baru</button></form>`;}
 async function loadHome(){const home=await call('home',{classId:S.classId,childId:S.childId});S.needsHome=false;S.home=home;S.user=home.user;if(S.user.role==='GURU_MAPEL')S.attMode='MAPEL';S.classId=home.classId;S.childId=home.currentChild?.id||'';if(S.user.mustChangePassword){passwordUI();return;}baseUI();render();}
+function prefetchTodayAttendance(){
+  if(!role('ADMIN','GURU_KELAS','GURU_MAPEL')||!S.home?.classId)return;
+  const m=role('GURU_MAPEL')?'MAPEL':'HARIAN';
+  const s=(S.home.subjects||[])[0]?.id||'';
+  if(m==='MAPEL'&&!s)return;
+  const identity=S.user?.id,klass=S.classId,day=S.home.serverDate;
+  // Background only: never hold up login, never render over an open form.
+  setTimeout(()=>{
+    if(!S.user||S.user.id!==identity||S.classId!==klass||S.home?.serverDate!==day)return;
+    cachedCall('attendance',{classId:klass,date:day,mode:m,mapelId:s||'',sessionNo:S.sessionNo},45000).catch(()=>{});
+  },450);
+}
 function render(){if(!S.home)return;document.querySelectorAll('[data-action=nav]').forEach(el=>el.classList.toggle('active',el.dataset.view===S.view||(el.dataset.view==='learning'&&isLearningView(S.view))));switch(S.view){case 'tahfidz':return renderTahfidz();case 'journal':return renderJournal();case 'assessments':return renderAssessments();case 'tasks':return renderTasks();case 'progress':return renderProgress();case 'dashboard':return renderDashboard();case 'printing':return renderPrinting();case 'notices':return renderNotices();case 'attendance':return renderAttendance();case 'behaviors':return renderBehaviors();case 'students':return renderStudents();case 'teachers':return renderTeachers();case 'parents':return renderParents();case 'requests':S.view='parents';FAMILY.tab='requests';return renderParents();case 'users':return renderUsers();case 'classes':return renderClasses();case 'settings':return renderSettings();default:S.view='dashboard';renderDashboard();}}
 const LEARNING_VIEWS=['attendance','journal','assessments','tasks','behaviors'];
 function isLearningView(id){return LEARNING_VIEWS.includes(id);}
@@ -192,7 +216,7 @@ function learningTabs(){
   const parent=role('ORANG_TUA');
   const tabs=[
     ['attendance','▦','Absen'],
-    ['journal','▤','Teacher Planner & Jurnal'],
+    ['journal','▤','Jurnal'],
     ['assessments','◈','Asesmen & Nilai'],
     ['tasks','▧','Penugasan'],
     ['behaviors','♡','Perilaku']
@@ -210,16 +234,21 @@ function setContent(html){
    while(content.firstChild)fragment.appendChild(content.firstChild);
    TAH.savedDom={fragment,context:tahCacheContext()};
  }
- content.innerHTML=isLearningView(S.view)?learningTabs()+html:html;
+ content.innerHTML=html;
+ // Susunan konsisten: judul modul, tab, baru konten.
+ if(isLearningView(S.view)){
+   const head=content.querySelector('.page-header');
+   if(head)head.insertAdjacentHTML('afterend',learningTabs());
+   else content.insertAdjacentHTML('afterbegin',learningTabs());
+ }
 }
 function stat(label,value,sub=''){return `<div class="card stat"><div class="meta">${E(label)}</div><div class="value">${E(value)}</div><div class="meta">${E(sub)}</div></div>`;}
 function childCards(){const children=S.home.children||[];return `<div class="child-grid">${children.map(c=>`<button type="button" class="child-card ${S.childId===c.id?'selected':''}" data-action="switch-child" data-id="${E(c.id)}"><div class="row"><span class="badge-round">🎒</span><div><div class="child-name">${E(c.name)}</div><div class="small muted">NIS ${E(c.nis)} · ${E(className(c.classId))}</div></div></div></button>`).join('')}</div>`;}
-function renderDashboard(){const x=S.home,st=x.stats,cl=className(x.classId);const parent=role('ORANG_TUA');let html=head(parent?'Portal keluarga':'Ringkasan kegiatan',parent?'Informasi belajar putra-putri Anda, dalam satu akun.':'Pantau aktivitas kelas dan informasi terbaru.');
+function renderDashboard(){const x=S.home,st=x.stats,cl=className(x.classId);const parent=role('ORANG_TUA');let html=head(parent?'Portal keluarga':'Ringkasan kegiatan','');
   if(parent)html+=`<div class="card"><div class="panel-title">Anak terhubung <span class="pill green">${x.children.length} anak</span></div>${x.children.length?childCards():empty('Belum ada anak yang terhubung. Silakan ajukan penghubungan melalui menu Keluarga kepada Admin.')}</div>`;
-  else html+=`<div class="notice">Kelas aktif: <b>${E(cl)}</b>. ${role('ADMIN')?'Mulailah dengan membuat akun Guru Kelas, kemudian kelas dan siswa.':role('KEPALA_SEKOLAH')?'Akun Kepala Sekolah memiliki akses monitoring.':'Input satu kali akan digunakan sebagai informasi kelas dan orang tua.'}</div>`;
-  html+=`<div class="grid grid4 section-gap">${parent?'':stat('Siswa di kelas',st.students)}${stat('Pengumuman terbit',st.notices)}${stat(parent?'Hari hadir tercatat':'Hadir hari ini',st.present||0,parent?`Dari ${st.daysRecorded||0} hari tercatat`:`Dari ${st.todayRecorded||0} absensi masuk`)}${stat('Catatan perilaku',st.behaviors)}</div>`;
-  html+=`<div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Pengumuman terbaru <button type="button" class="btn btn-sm" data-action="nav" data-view="notices">Lihat semua</button></div><div class="stack">${x.notices.filter(a=>a.status==='PUBLISHED').slice(0,4).map(n=>`<div class="item"><div class="small muted">${E(n.createdAt.slice(0,10))} · ${E(n.scope==='SEKOLAH'?'Sekolah':className(n.classId))}</div><h3>${E(n.title)}</h3><p class="small">${E(n.body.slice(0,180))}</p></div>`).join('')||empty('Belum ada pengumuman.')}</div></div><div class="card"><div class="panel-title">Catatan perkembangan perilaku <button type="button" class="btn btn-sm" data-action="nav" data-view="behaviors">Selengkapnya</button></div><div class="stack">${x.behaviors.slice(0,4).map(b=>`<div class="item"><div class="item-head"><span class="pill ${b.kind==='POSITIF'?'green':'yellow'}">${b.kind==='POSITIF'?'Apresiasi':'Pembinaan'}</span><span class="small muted">${E(b.createdAt.slice(0,10))}</span></div><h3>${E(parent?'Untuk '+(x.currentChild?.name||'anak'):studentName(b.studentId))}</h3><p class="small">${E(b.description.slice(0,155))}</p></div>`).join('')||empty('Belum ada catatan perilaku.')}</div></div></div>`;
-  if(!parent)html+=`<div class="card section-gap"><div class="panel-title">Akses cepat</div><div class="actions"><button class="btn" data-action="nav" data-view="notices">📢 Pengumuman kelas</button><button class="btn" data-action="nav" data-view="attendance">📋 Absensi kelas</button><button class="btn" data-action="nav" data-view="behaviors">♡ Catatan perilaku</button><button class="btn" data-action="nav" data-view="journal">📖 Teacher Planner</button><button class="btn" data-action="nav" data-view="tahfidz">📗 Tahfidz & Murojaah</button><button class="btn" data-action="nav" data-view="assessments">✦ Asesmen</button><button class="btn" data-action="nav" data-view="tasks">📝 Penugasan</button>${!role('GURU_MAPEL')?'<button class="btn" data-action="nav" data-view="progress">📈 Perkembangan Belajar</button>':''}${role('ADMIN','GURU_KELAS')?'<button class="btn" data-action="nav" data-view="students">♧ Data siswa</button>':''}</div></div>`;
+  else html+=`<div class="dashboard-class-banner"><span class="class-icon" aria-hidden="true">▦</span><span class="class-info">Kelas aktif: <b>${E(cl)}</b></span></div>`;
+  html+=`<div class="grid grid4 section-gap dashboard-stats">${parent?'':stat('Siswa di kelas',st.students)}${stat('Pengumuman terbit',st.notices)}${stat(parent?'Hari hadir tercatat':'Hadir hari ini',st.present||0,parent?`Dari ${st.daysRecorded||0} hari tercatat`:`Dari ${st.todayRecorded||0} absensi masuk`)}${stat('Catatan perilaku',st.behaviors)}</div>`;
+  html+=`<div class="grid grid2 section-gap dashboard-feeds"><div class="card"><div class="panel-title">Pengumuman terbaru <button type="button" class="btn btn-sm" data-action="nav" data-view="notices">Lihat semua</button></div><div class="stack">${x.notices.filter(a=>a.status==='PUBLISHED').slice(0,4).map(n=>`<div class="item"><div class="small muted">${E(n.createdAt.slice(0,10))} · ${E(n.scope==='SEKOLAH'?'Sekolah':className(n.classId))}</div><h3>${E(n.title)}</h3><p class="small">${E(n.body.slice(0,180))}</p></div>`).join('')||empty('Belum ada pengumuman.')}</div></div><div class="card"><div class="panel-title">Catatan perkembangan perilaku <button type="button" class="btn btn-sm" data-action="nav" data-view="behaviors">Selengkapnya</button></div><div class="stack">${x.behaviors.slice(0,4).map(b=>`<div class="item"><div class="item-head"><span class="pill ${b.kind==='POSITIF'?'green':'yellow'}">${b.kind==='POSITIF'?'Apresiasi':'Pembinaan'}</span><span class="small muted">${E(b.createdAt.slice(0,10))}</span></div><h3>${E(parent?'Untuk '+(x.currentChild?.name||'anak'):studentName(b.studentId))}</h3><p class="small">${E(b.description.slice(0,155))}</p></div>`).join('')||empty('Belum ada catatan perilaku.')}</div></div></div>`;
   setContent(html);
 }
 function renderNotices(){const x=S.home,can=role('ADMIN','GURU_KELAS','GURU_MAPEL'),parent=role('ORANG_TUA');let html=head('Papan pengumuman','Jadwal, ujian, agenda, dan informasi penting untuk keluarga.');
@@ -682,8 +711,8 @@ document.addEventListener('submit',async ev=>{
    if(r.user.mustChangePassword)passwordUI();
    else if(r.home){
      S.home=r.home;S.user=r.home.user;S.needsHome=false;S.classId=r.home.classId;S.childId=r.home.currentChild?.id||'';
-     baseUI();render();
-   }else await loadHome();
+     baseUI();render();prefetchTodayAttendance();
+   }else {await loadHome();prefetchTodayAttendance();}
    console.info('SIPANDAI: login & halaman awal '+(Date.now()-loginStarted)+' ms (termasuk respons jaringan)',r.perf||'');}catch(e){toast(e.message,true);}finally{busy(false);}return;}
   if(formId==='change-password-form'){const r=await submitAction('changePassword',d,{refresh:false});if(r?.ok){S.token='';try{sessionStorage.removeItem('sipandai_token');}catch(e){}loginUI();toast('Password diganti. Silakan login dengan password baru.');}return;}
   if(formId==='user-form')return submitAction('createUser',d,{credentials:true,refresh:false});
@@ -694,7 +723,29 @@ document.addEventListener('submit',async ev=>{
   if(formId==='link-parent-form'){if(!role('ADMIN'))return;const r=await submitAction('linkParent',d,{refresh:false});if(r){FAMILY.tab='list';FAMILY.query='';FAMILY.page=1;await reloadFamilyList();}return;}
   if(formId==='request-link-form')return submitAction('requestLink',d,{refresh:false});
   if(formId==='notice-form')return submitAction('saveNotice',{...d,classId:S.classId,requireConfirm:d.requireConfirm==='YES'});
-  if(formId==='attendance-form'){const rows=[...f.querySelectorAll('.att-student[data-student-id]')].map(tr=>({studentId:tr.dataset.studentId,status:tr.querySelector('.att-status').value,note:tr.querySelector('.att-note').value}));const result=await submitAction('saveAttendance',{classId:S.classId,date:S.attDate,mode:S.attMode,mapelId:S.attMapel,sessionNo:S.sessionNo,rows,edit:!!S.att?.hasSaved&&S.attEdit},{refresh:false});if(result){forgetMenuCache('attendance');S.attEdit=false;S.att=null;loadAttendance();}return;}
+  if(formId==='attendance-form'){
+    const rows=[...f.querySelectorAll('.att-student[data-student-id]')].map(tr=>({studentId:tr.dataset.studentId,status:tr.querySelector('.att-status').value,note:tr.querySelector('.att-note').value}));
+    const oldAttendance=S.att;
+    const savedContext={classId:S.classId,date:S.attDate,mode:S.attMode,mapelId:S.attMapel,sessionNo:S.sessionNo};
+    const result=await submitAction('saveAttendance',{...savedContext,rows,edit:!!oldAttendance?.hasSaved&&S.attEdit},{refresh:false});
+    if(result){
+      // One authoritative successful save response is enough to lock the form.
+      // Re-fetch only when teacher explicitly taps Refresh / changes date.
+      const byId=new Map(rows.map(x=>[x.studentId,x]));
+      const snapshot={...oldAttendance,hasSaved:true,rows:(oldAttendance?.rows||[]).map(s=>({...s,...byId.get(s.id)}))};
+      S.attEdit=false;
+      S.needsHome=false; // Home figures are patched below; skip a second full bootstrap.
+      if(S.attMode==='HARIAN'&&S.attDate===S.home?.serverDate){
+        S.home.stats.present=rows.filter(x=>x.status==='H').length;
+        S.home.stats.todayRecorded=rows.length;
+      }
+      // Do not cache an unfinished or optimistic request: backend already confirmed success.
+      const key=menuCacheKey('attendance',savedContext);
+      S.menuCache.set(key,{value:snapshot,until:Date.now()+45000});
+      paintAttendance(snapshot);
+    }
+    return;
+  }
   if(formId==='behavior-form'){try{busy(true);const file=await readFile($('#behavior-file')?.files[0]);await submitAction('saveBehavior',{...d,file,classId:S.classId});}catch(e){toast(e.message,true);}finally{busy(false);}return;}
   console.error('SIPANDAI: handler simpan tidak ditemukan untuk formulir',formId);
   toast('Formulir '+formId+' belum memiliki proses penyimpanan. Hubungi pengelola.',true);
@@ -810,7 +861,7 @@ document.addEventListener('change',ev=>{
  if(ev.target.id==='family-link-class'){FAMILY.linkClassId=ev.target.value;void updateFamilyStudentChoices();return;}
  if(ev.target.id==='family-parent-select'){FAMILY.selectedParentId=ev.target.value;return;}
  if(ev.target.id==='progress-student'){S.progress.studentId=ev.target.value;loadProgress();return;}if(ev.target.id==='task-pick-student'){loadTaskDetail(S.v2.taskId,ev.target.value);return;}if(ev.target.id==='switch-class'){clearTahDom();S.progress.lastKey='';S.classId=ev.target.value;S.v2.assessmentId='';S.v2.taskId='';S.attMapel='';S.att=null;S.attEdit=false;loadHome().catch(e=>toast(e.message,true));}if(ev.target.id==='att-mode'){S.attMode=ev.target.value;S.att=null;S.attEdit=false;renderAttendance();}});
-(async()=>{if(!S.token){loginUI();return;}try{await loadHome();}catch(e){S.token='';try{sessionStorage.removeItem('sipandai_token');}catch(x){}loginUI();toast('Sesi berakhir. Silakan login kembali.',true);}})();
+(async()=>{if(!S.token){loginUI();return;}try{await loadHome();prefetchTodayAttendance();}catch(e){S.token='';try{sessionStorage.removeItem('sipandai_token');}catch(x){}loginUI();toast('Sesi berakhir. Silakan login kembali.',true);}})();
 
 /* SIPANDAI v3.5: laporan dan cetak via browser; ekspor tabel ke CSV kompatibel Excel. */
 let printableData=null;
@@ -829,12 +880,26 @@ function printTypeOptions(group){return group.types.filter(t=>!role('ORANG_TUA')
 function renderPrinting(){
  const parent=role('ORANG_TUA'),k=S.home?.students||[],today=S.home?.serverDate||new Date().toISOString().slice(0,10);
  const group=printActiveGroup();PRINT_ACTIVE=group.id;
- let body=head('Cetak & Laporan','Pilih kategori dokumen, atur periode, lalu tampilkan pratinjau tanpa berpindah halaman.');
- body+=`<div class="print-intro"><b>Pusat Dokumen SIPANDAI</b><p class="hint">Satu tempat untuk laporan akademik, kehadiran, Tahfidz, dan perkembangan. Tab tidak mengambil data baru dari server.</p></div>`;
+ let body=head('Cetak & Laporan','Pilih kategori dan buat pratinjau.');
  body+=`<nav class="module-tabs print-tabs" aria-label="Kategori laporan">${printGroups().map(g=>`<button type="button" class="module-tab ${g.id===PRINT_ACTIVE?'active':''}" data-action="print-tab" data-tab="${g.id}" aria-current="${g.id===PRINT_ACTIVE?'page':'false'}"><span aria-hidden="true">${g.icon}</span>${g.title}</button>`).join('')}</nav>`;
- body+=`<div class="grid grid2 print-main-grid"><div class="card"><div class="panel-title">Pengaturan dokumen</div><p id="print-group-description" class="hint">${E(group.description)}</p><form id="print-form" class="section-gap"><div class="form-grid"><div class="field wide"><label class="label">Jenis dokumen</label><select name="type" id="print-type">${printTypeOptions(group)}</select></div>${parent?'':`<div class="field"><label class="label">Siswa (laporan individual)</label><select name="studentId" id="print-student">${fillOptions(k,k[0]?.id||'','Pilih siswa')}</select></div>`}<div class="field"><label class="label">Dari tanggal</label><input type="date" name="from" value="${E(today.slice(0,7)+'-01')}"></div><div class="field"><label class="label">Sampai tanggal</label><input type="date" name="to" value="${E(today)}"></div>${parent?'':`<div class="field"><label class="label">Jenis absensi</label><select name="mode"><option value="HARIAN">Harian</option><option value="MAPEL">Per mata pelajaran</option></select></div>`}<div class="field"><label class="label">Bulan aktivitas Tahfidz</label><input type="month" name="period" value="${E(today.slice(0,7))}"></div></div><div class="actions"><button type="submit" class="btn btn-primary">Buat pratinjau</button></div></form></div><div class="card print-help"><div class="panel-title">Petunjuk cetak</div><div class="stack"><div class="item"><b>1. Pilih jenis laporan</b><p class="hint">Gunakan tab kategori di atas. Setiap tab memiliki pilihan laporan yang relevan.</p></div><div class="item"><b>2. Periksa pratinjau</b><p class="hint">Pastikan kelas, siswa, periode, dan data sudah sesuai.</p></div><div class="item"><b>3. Cetak atau simpan PDF</b><p class="hint">Pilih printer atau Simpan sebagai PDF dari dialog browser; ekspor CSV tersedia untuk laporan tabel.</p></div></div></div></div>`;
+ body+=`<div class="grid grid2 print-main-grid"><div class="card"><div class="panel-title">Pengaturan dokumen</div><p id="print-group-description" class="hint">${E(group.description)}</p><form id="print-form" class="section-gap"><div class="form-grid"><div class="field wide"><label class="label">Jenis dokumen</label><select name="type" id="print-type">${printTypeOptions(group)}</select></div>${parent?'':`<div class="field" data-print-field="student"><label class="label">Siswa (laporan individual)</label><select name="studentId" id="print-student">${fillOptions(k,k[0]?.id||'','Pilih siswa')}</select></div>`}<div class="field" data-print-field="date"><label class="label">Dari tanggal</label><input type="date" name="from" value="${E(today.slice(0,7)+'-01')}"></div><div class="field" data-print-field="date"><label class="label">Sampai tanggal</label><input type="date" name="to" value="${E(today)}"></div>${parent?'':`<div class="field" data-print-field="mode"><label class="label">Jenis absensi</label><select name="mode"><option value="HARIAN">Harian</option><option value="MAPEL">Per mata pelajaran</option></select></div>`}<div class="field" data-print-field="period"><label class="label">Bulan aktivitas Tahfidz</label><input type="month" name="period" value="${E(today.slice(0,7))}"></div></div><div class="actions"><button type="submit" class="btn btn-primary">Buat pratinjau</button></div></form></div><div class="card print-help"><div class="panel-title">Petunjuk cetak</div><div class="stack"><div class="item"><b>1. Pilih jenis laporan</b><p class="hint">Gunakan tab kategori di atas. Setiap tab memiliki pilihan laporan yang relevan.</p></div><div class="item"><b>2. Periksa pratinjau</b><p class="hint">Pastikan kelas, siswa, periode, dan data sudah sesuai.</p></div><div class="item"><b>3. Cetak atau simpan PDF</b><p class="hint">Pilih printer atau Simpan sebagai PDF dari dialog browser; ekspor CSV tersedia untuk laporan tabel.</p></div></div></div></div>`;
  body+=`<div id="print-preview" class="card section-gap">${empty('Pilih dokumen lalu klik Buat pratinjau.')}</div>`;
  setContent(body);
+ updatePrintFields();
+}
+function updatePrintFields(){
+ const f=document.getElementById('print-form');
+ if(S.view!=='printing'||!f)return;
+ const type=f.elements.namedItem('type')?.value||'';
+ const display={
+   student:['progress','tahfidzStudent'].includes(type),
+   date:['attendance','journal','scores','tasks','behaviors'].includes(type),
+   mode:type==='attendance',
+   period:type==='tahfidzClass'
+ };
+ f.querySelectorAll('[data-print-field]').forEach(el=>{
+   el.hidden=!display[el.dataset.printField];
+ });
 }
 function switchPrintTab(id){
  const group=printGroups().find(g=>g.id===id);if(!group)return;
@@ -842,6 +907,7 @@ function switchPrintTab(id){
  document.querySelectorAll('.print-tabs .module-tab').forEach(b=>{const active=b.dataset.tab===id;b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');});
  const select=$('#print-type');if(select)select.innerHTML=printTypeOptions(group);
  const desc=$('#print-group-description');if(desc)desc.textContent=group.description;
+ updatePrintFields();
  printableData=null;
  const preview=$('#print-preview');if(preview)preview.innerHTML=empty('Kategori diubah. Buat pratinjau untuk laporan yang dipilih.');
 }
@@ -903,6 +969,7 @@ function printNow(){if(!printableData)return;createPrintable(renderPrintDoc(prin
 function csvCell(x){let v=String(x??'');if(/^[=+@\-]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"';}
 function exportCsv(){const d=printableData;if(!d||d.kind!=='table')return;const all=[d.headers,...d.rows].map(row=>row.map(csvCell).join(',')).join('\r\n');const blob=new Blob(['\ufeff'+all],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='SIPANDAI_'+d.type+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);}
 document.addEventListener('submit',async ev=>{if(ev.target.getAttribute('id')!=='print-form')return;ev.preventDefault();const f=ev.target,fd=Object.fromEntries(new FormData(f).entries());try{busy(true);const data=await call('printData',{...fd,classId:S.classId,studentId:role('ORANG_TUA')?S.childId:fd.studentId});previewPrint(data);}catch(err){toast('Gagal membuat laporan: '+err.message,true);}finally{busy(false);}},true);
+document.addEventListener('change',ev=>{if(ev.target?.id==='print-type'&&S.view==='printing')updatePrintFields();},true);
 document.addEventListener('click',ev=>{const b=ev.target.closest('[data-action]');if(!b)return;if(b.dataset.action==='print-tab'){ev.preventDefault();switchPrintTab(b.dataset.tab);return;}if(b.dataset.action==='print-now'){ev.preventDefault();printNow();}if(b.dataset.action==='export-csv'){ev.preventDefault();exportCsv();}},true);
 
 
@@ -998,8 +1065,7 @@ function renderTahfidz(){
  if(cache&&cache.context!==tahCacheContext())clearTahDom();
  if(TAH.viewClass!==S.classId){TAH.viewClass=S.classId;TAH.tab='overview';TAH.detail=null;TAH.klass=null;TAH.settings=null;TAH.studentId='';}
  TAH.studentId=parent?S.childId:TAH.studentId&&S.home.students?.some(x=>x.id===TAH.studentId)?TAH.studentId:S.home.students?.[0]?.id||'';
- let html=head('Tahfidz & Murojaah',parent?'Pantau hafalan yang sudah dikuasai, setoran, penguatan, serta apresiasi guru.':'Target kelas, setoran individual, penilaian murojaah, dan apresiasi yang terukur.');
- if(!parent)html+=`<div class="notice">Kelola kegiatan melalui tab di bawah ini. Guru Kelas dan Guru Tahfidz yang ditugaskan dapat sama-sama mencatat setoran. Pilih tab tanpa memuat ulang seluruh data.</div>`;
+ let html=head('Tahfidz',parent?'Pantau hafalan dan perkembangan anak.':'Target, setoran, dan murojaah siswa.');
  html+=`<div id="tah-main">${tahTabs(parent)}${(parent?TAH_PARENT_TABS:TAH_TEACHER_TABS).map(x=>tahPane(x[0],loader())).join('')}</div>`;setContent(html);
  // Setelah halaman dibangun ulang (mis. kelas diganti), data yang masih valid bisa langsung ditampilkan.
  if(!parent&&TAH.settings&&TAH.klass&&TAH.viewClass===S.classId){drawTahTeacher();return;}
@@ -1024,7 +1090,7 @@ function drawTahTeacher(){
  const k=TAH.klass,rows=k.students||[];
  if(!TAH_TEACHER_TABS.some(x=>x[0]===TAH.tab))TAH.tab='overview';
  const period=TAH.period||(S.home?.serverDate||'').slice(0,7);
- const summary=`<div class="tah-intro-card"><div><b>Pantauan Tahfidz Kelas</b><p class="hint">Ringkasan capaian target kelas dan aktivitas murojaah bulan ${E(period)}.</p></div><button class="btn btn-sm btn-outline" data-action="tah-refresh">↻ Perbarui data</button></div>
+ const summary=`<div class="tah-summary-toolbar"><span class="small muted">Aktivitas bulan <b>${E(period)}</b></span><button class="btn btn-sm btn-outline" data-action="tah-refresh">↻ Perbarui</button></div>
  <div class="grid grid3 section-gap">${stat('Siswa dalam kelas',rows.length)}${stat('Target hafalan aktif',(TAH.settings?.targets||[]).length)}${stat('Sesi murojaah tercatat',rows.reduce((s,x)=>s+x.sessions,0))}</div>
  <div class="card section-gap"><div class="panel-title">Perkembangan seluruh siswa</div><div class="table-wrap"><table><thead><tr><th>Nama siswa</th><th>Capaian target</th><th>Murojaah</th><th>Hari aktif</th><th>Tindakan</th></tr></thead><tbody>${rows.map(x=>`<tr><td><b>${E(x.name)}</b><div class="small muted">${E(x.nis)}</div></td><td>${x.done} / ${x.target} ayat ${tahProgressBar(x.percentage)}</td><td>${x.sessions} sesi</td><td>${x.days} hari</td><td><div class="actions" style="margin:0"><button type="button" class="btn btn-sm btn-outline" data-action="tah-pick-student" data-id="${E(x.studentId)}">Lihat progres</button>${!role('KEPALA_SEKOLAH')?`<button type="button" class="btn btn-sm" data-action="tah-record-student" data-id="${E(x.studentId)}">+ Setoran</button>`:''}</div></td></tr>`).join('')||'<tr><td colspan="5">Belum ada siswa di kelas ini.</td></tr>'}</tbody></table></div></div>`;
  const readonlyTargets=`<div class="card"><div class="panel-title">Target hafalan kelas</div><div class="stack">${(TAH.settings?.targets||[]).map(t=>`<div class="item"><b>${E(t.surahName)} · ${E(t.startAyah)}–${E(t.endAyah)}</b><div class="small muted">Semester ${E(t.semester)}</div></div>`).join('')||empty('Belum ada target kelas.')}</div></div>`;
@@ -1036,7 +1102,7 @@ function drawTahTeacher(){
  const panes=[
  tahPane('overview',summary),
  tahPane('entry',canEdit?tahEntryForm():`<div class="card">${empty('Akses monitoring: pencatatan setoran hanya untuk Guru Kelas atau Guru Tahfidz.')}</div>`),
- tahPane('students',selectedStudent+(canEdit?`<div class="section-gap grid grid2">${tahBaselineForm()}<div class="card"><div class="panel-title">Akses cepat</div><p class="hint">Catat hafalan awal apabila siswa sudah memiliki hafalan terverifikasi dari kelas sebelumnya.</p><button type="button" class="btn btn-primary section-gap" data-action="tah-tab" data-tab="entry">+ Catat setoran baru</button></div></div>`:'')+`<div id="tah-student-detail" class="section-gap">${empty('Pilih siswa untuk memuat riwayat hafalannya.')}</div>`),
+ tahPane('students',selectedStudent+(canEdit?`<div class="section-gap">${tahBaselineForm()}<div class="actions"><button type="button" class="btn btn-outline" data-action="tah-tab" data-tab="entry">+ Catat setoran baru</button></div></div>`:'')+`<div id="tah-student-detail" class="section-gap">${empty('Pilih siswa untuk memuat riwayat hafalannya.')}</div>`),
  tahPane('targets',targetPanel),
  tahPane('awards',awardsIntro+suggestions+(canEdit?`<div class="section-gap">${tahAwardForm()}</div>`:'')),
  tahPane('reports',tahPrintPanel())

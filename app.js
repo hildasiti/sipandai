@@ -1549,7 +1549,7 @@ document.addEventListener('click',ev=>{
 },true);
 
 /* ===== SIPANDAI v3.6 | Modul Tahfidz & Murojaah ===== */
-const TAH={key:'',settings:null,klass:null,detail:null,studentId:'',period:'',request:0,tab:'overview',viewClass:'',savedDom:null};
+const TAH={key:'',settings:null,klass:null,detail:null,studentId:'',period:'',request:0,tab:'overview',viewClass:'',savedDom:null,studentSubTab:'progress'};
 const tahStatuses={TUNTAS:'Tuntas',PENGUATAN:'Lancar, perlu penguatan',PERBAIKAN:'Perlu perbaikan',ULANG:'Mengulang setoran'};
 const tahKinds={SETORAN:'Setoran hafalan',MUROJAAH:'Murojaah'};
 function tahSurahOptions(selected='78'){
@@ -1617,9 +1617,37 @@ function tahSwitchTab(tab,options={}){
  root.querySelectorAll('.tah-pane').forEach(p=>{p.hidden=p.id!==`tah-pane-${tab}`;});
  if(options.focus)button.focus({preventScroll:true});
  if(options.scroll)document.querySelector('#tah-tabbar')?.scrollIntoView({behavior:'smooth',block:'start'});
- if(!role('ORANG_TUA')&&['entry','students'].includes(tab)){
+ if(!role('ORANG_TUA')&&(tab==='entry'||(tab==='students'&&TAH.studentSubTab==='progress'))){
   if(!TAH.detail||TAH.detail?.student?.id!==TAH.studentId)tahLoadStudent(false);
   else if(tab==='entry')tahSuggestNext(TAH.detail);
+ }
+}
+/** Submenu Hafalan Siswa: monitoring menjadi tampilan utama, input awal opsional. */
+function tahStudentSubTabs(canEdit){
+ const current=canEdit&&TAH.studentSubTab==='baseline'?'baseline':'progress';
+ TAH.studentSubTab=current;
+ const tabs=[['progress','Progres & Monitoring'],...(canEdit?[['baseline','Catat Hafalan Awal']]:[])];
+ return `<nav class="tah-student-subtabs" role="tablist" aria-label="Submenu Hafalan Siswa">${tabs.map(([id,label])=>`<button type="button" class="tah-student-subtab" id="tah-student-subtab-${id}" data-action="tah-student-subtab" data-subtab="${id}" role="tab" aria-controls="tah-student-panel-${id}" aria-selected="${current===id?'true':'false'}" tabindex="${current===id?'0':'-1'}">${label}</button>`).join('')}</nav>`;
+}
+function tahStudentPanel(id,content){
+ return `<section class="tah-student-subpane" role="tabpanel" id="tah-student-panel-${id}" aria-labelledby="tah-student-subtab-${id}" ${TAH.studentSubTab===id?'':'hidden'}>${content}</section>`;
+}
+function tahSwitchStudentSubTab(tab,options={}){
+ const root=$('#tah-pane-students');
+ if(!root)return;
+ const button=root.querySelector(`#tah-student-subtab-${tab}`);
+ if(!button)return;
+ TAH.studentSubTab=tab;
+ root.querySelectorAll('.tah-student-subtab').forEach(b=>{
+   const selected=b.dataset.subtab===tab;
+   b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1;
+ });
+ root.querySelectorAll('.tah-student-subpane').forEach(p=>{p.hidden=p.id!==`tah-student-panel-${tab}`;});
+ if(options.focus)button.focus({preventScroll:true});
+ if(tab==='progress'){
+   const detailHost=$('#tah-student-detail');
+   if(!TAH.detail||TAH.detail?.student?.id!==TAH.studentId)tahLoadStudent(false);
+   else if(detailHost&&!detailHost.querySelector('.card'))detailHost.innerHTML=tahDetailMarkup(TAH.detail);
  }
 }
 function tahParentMarkup(detail){
@@ -1638,7 +1666,7 @@ function renderTahfidz(){
    return;
  }
  if(cache&&cache.context!==tahCacheContext())clearTahDom();
- if(TAH.viewClass!==S.classId){TAH.viewClass=S.classId;TAH.tab='overview';TAH.detail=null;TAH.klass=null;TAH.settings=null;TAH.studentId='';}
+ if(TAH.viewClass!==S.classId){TAH.viewClass=S.classId;TAH.tab='overview';TAH.detail=null;TAH.klass=null;TAH.settings=null;TAH.studentId='';TAH.studentSubTab='progress';}
  TAH.studentId=parent?S.childId:TAH.studentId&&S.home.students?.some(x=>x.id===TAH.studentId)?TAH.studentId:S.home.students?.[0]?.id||'';
  let html=head('Tahfidz',parent?'Pantau hafalan dan perkembangan anak.':'Target, setoran, dan murojaah siswa.');
  html+=`<div id="tah-main">${tahTabs(parent)}${(parent?TAH_PARENT_TABS:TAH_TEACHER_TABS).map(x=>tahPane(x[0],loader())).join('')}</div>`;setContent(html);
@@ -1655,7 +1683,7 @@ async function loadTahfidz(refresh=false){
   const {settings,klass}=await fetchTahDashboard({classId,period},refresh?0:45000);
   if(req!==TAH.request||S.view!=='tahfidz'||S.classId!==classId)return;
   TAH.settings=settings;TAH.klass=klass;drawTahTeacher();
-  if(['entry','students'].includes(TAH.tab))await tahLoadStudent(false);
+  if(TAH.tab==='entry'||(TAH.tab==='students'&&TAH.studentSubTab==='progress'))await tahLoadStudent(false);
  }catch(err){
   console.error('SIPANDAI Tahfidz gagal dimuat:',err);
   const h=$('#tah-main');
@@ -1682,12 +1710,16 @@ function drawTahTeacher(){
  const panes=[
  tahPane('overview',summary),
  tahPane('entry',canEdit?tahEntryForm():`<div class="card">${empty('Akses monitoring: pencatatan setoran hanya untuk Guru Kelas atau Guru Tahfidz.')}</div>`),
- tahPane('students',selectedStudent+(canEdit?`<div class="section-gap">${tahBaselineForm()}<div class="actions"><button type="button" class="btn btn-outline" data-action="tah-tab" data-tab="entry">+ Catat setoran baru</button></div></div>`:'')+`<div id="tah-student-detail" class="section-gap">${empty('Pilih siswa untuk memuat riwayat hafalannya.')}</div>`),
+ tahPane('students',selectedStudent+tahStudentSubTabs(canEdit)+
+   tahStudentPanel('progress',`<div id="tah-student-detail">${empty('Pilih siswa untuk memuat riwayat hafalannya.')}</div>`)+
+   (canEdit?tahStudentPanel('baseline',tahBaselineForm()):'')),
  tahPane('targets',targetPanel),
  tahPane('awards',awardsIntro+suggestions+(canEdit?`<div class="section-gap">${tahAwardForm()}</div>`:'')),
  tahPane('reports',tahPrintPanel())
  ];
  const el=$('#tah-main');if(el)el.innerHTML=tahTabs(false)+panes.join('');
+ const detailHost=$('#tah-student-detail');
+ if(detailHost&&TAH.detail?.student?.id===TAH.studentId)detailHost.innerHTML=tahDetailMarkup(TAH.detail);
 }
 async function tahLoadStudent(refresh=false){
  if(!TAH.studentId){const h=$('#tah-student-detail');if(h)h.innerHTML=empty('Belum ada siswa terdaftar.');return;}
@@ -1698,7 +1730,7 @@ async function tahLoadStudent(refresh=false){
 }
 function tahInvalidate(){forgetMenuCache('tahDashboard','tahSettings','tahClassReport','tahStudentReport','printData');TAH.klass=null;TAH.detail=null;TAH.savedDom=null;}
 async function tahSave(action,data){
- try{busy(true);processMessage('Menyimpan catatan Tahfidz…');const r=await call(action,{...data,classId:S.classId});if(!r?.ok)throw new Error('Server tidak mengonfirmasi penyimpanan.');tahInvalidate();toast('Catatan Tahfidz berhasil disimpan.');await loadTahfidz(true);return r;}
+ try{busy(true);processMessage('Menyimpan catatan Tahfidz…');const r=await call(action,{...data,classId:S.classId});if(!r?.ok)throw new Error('Server tidak mengonfirmasi penyimpanan.');tahInvalidate();if(action==='tahSaveBaseline')TAH.studentSubTab='progress';toast('Catatan Tahfidz berhasil disimpan.');await loadTahfidz(true);return r;}
  catch(e){toast('Tidak tersimpan: '+e.message,true);return null;}finally{busy(false);}
 }
 function tahEditEntry(id){const entry=TAH.detail?.entries?.find(x=>x.id===id);if(!entry)return;tahSwitchTab('entry');const form=$('#tah-entry-form');if(!form)return;
@@ -1718,6 +1750,7 @@ document.addEventListener('click',async ev=>{
  const b=ev.target.closest('[data-action]'),action=b?.dataset?.action;if(!action||!action.startsWith('tah-'))return;
  ev.preventDefault();ev.stopImmediatePropagation();
  if(action==='tah-tab'){tahSwitchTab(b.dataset.tab,{focus:true,scroll:false});return;}
+ if(action==='tah-student-subtab'){tahSwitchStudentSubTab(b.dataset.subtab,{focus:true});return;}
  if(action==='tah-record-student'){
   TAH.studentId=b.dataset.id;
   ['tah-entry-form','tah-baseline-form','tah-award-form','tah-student-select','tah-print-student'].forEach(id=>{const f=$('#'+id),el=f?.tagName==='SELECT'?f:f?.elements?.namedItem('studentId');if(el)el.value=TAH.studentId;});
@@ -1737,16 +1770,23 @@ document.addEventListener('change',ev=>{
  if(ev.target?.id==='tah-student-select'){
    TAH.studentId=ev.target.value;
    ['tah-entry-form','tah-baseline-form','tah-award-form'].forEach(id=>{const f=$('#'+id);if(f?.elements.namedItem('studentId'))f.elements.namedItem('studentId').value=TAH.studentId;});
-   tahLoadStudent(false);return;
+   if(TAH.tab==='students'&&TAH.studentSubTab==='progress')tahLoadStudent(false);return;
  }
  if(ev.target?.matches('#tah-entry-form [name="studentId"],#tah-baseline-form [name="studentId"],#tah-award-form [name="studentId"]')){
    TAH.studentId=ev.target.value;
    const pick=$('#tah-student-select');if(pick)pick.value=TAH.studentId;
    ['tah-entry-form','tah-baseline-form','tah-award-form'].forEach(id=>{const f=$('#'+id);if(f?.elements.namedItem('studentId'))f.elements.namedItem('studentId').value=TAH.studentId;});
-   tahLoadStudent(false);
+   if(TAH.tab==='entry'||TAH.studentSubTab==='progress')tahLoadStudent(false);
  }
 },true);
 document.addEventListener('keydown',ev=>{
+ const sub=ev.target?.closest?.('.tah-student-subtab');
+ if(sub&&['ArrowRight','ArrowLeft','Home','End'].includes(ev.key)){
+   const items=[...sub.parentNode.querySelectorAll('.tah-student-subtab')],i=items.indexOf(sub);
+   const next=ev.key==='Home'?items[0]:ev.key==='End'?items[items.length-1]:items[(i+(ev.key==='ArrowRight'?1:-1)+items.length)%items.length];
+   if(next){ev.preventDefault();tahSwitchStudentSubTab(next.dataset.subtab,{focus:true});}
+   return;
+ }
  const b=ev.target?.closest?.('.tah-tab');if(!b||!['ArrowRight','ArrowLeft','Home','End'].includes(ev.key))return;
  const list=[...b.parentNode.querySelectorAll('.tah-tab')],idx=list.indexOf(b);
  const next=ev.key==='Home'?list[0]:ev.key==='End'?list[list.length-1]:list[(idx+(ev.key==='ArrowRight'?1:-1)+list.length)%list.length];

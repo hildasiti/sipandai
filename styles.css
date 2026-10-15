@@ -586,3 +586,14 @@ html,body{min-height:100%;width:100%;}
  #tah-pane-overview .tah-summary-row{column-gap:5px;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr) minmax(0,.65fr)}
  #tah-pane-overview .tah-summary-activity{font-size:9px}
 }
+
+/* SIPANDAI v4.12.3 — submenu Hafalan Siswa: monitoring dulu, pencatatan awal kedua */
+.tah-student-subtabs{display:flex;align-items:center;gap:5px;padding:5px;margin:12px 0;background:#edf4f0;border:1px solid var(--line);border-radius:12px;max-width:100%;flex-wrap:wrap}
+.tah-student-subtab{flex:0 1 auto;border:1px solid transparent;background:transparent;border-radius:9px;padding:9px 15px;min-height:39px;color:#536e62;font-weight:750;font-size:13px;line-height:1.3;text-align:center}
+.tah-student-subtab[aria-selected="true"]{color:#fff;background:var(--green);box-shadow:0 3px 9px rgba(23,108,89,.14)}
+.tah-student-subtab:focus-visible{outline:3px solid #8ecbb2;outline-offset:2px}
+.tah-student-subpane[hidden]{display:none!important}
+.tah-student-subpane{min-width:0;animation:tahShow .15s ease-out}
+.tah-student-subpane > .card:first-child{margin-top:0}
+@media(max-width:600px){.tah-student-subtabs{flex-wrap:nowrap;gap:3px;padding:4px}.tah-student-subtab{flex:1 1 0;min-width:0;white-space:normal;font-size:11px;min-height:41px;padding:7px 5px}}
+@media(prefers-reduced-motion:reduce){.tah-student-subpane{animation:none}}

@@ -1,4 +1,4 @@
-console.info('SIPANDAI v4.7 — Input nilai padat, catatan sesuai kebutuhan');
+console.info('SIPANDAI v4.8 — Portal Orang Tua/Wali: nilai per mapel, ringkasan harian dan Tahfidz');
 'use strict';
 const S={token:'',user:null,home:null,view:'dashboard',classId:'',childId:'',additional:{},att:null,attEdit:false,attMode:'HARIAN',attDate:'',attMapel:'',sessionNo:'1',busy:false,menuCache:new Map(),needsHome:false,attRequest:0,learningTab:'journal'};
 try { S.token=sessionStorage.getItem('sipandai_token')||''; } catch(e) {}
@@ -244,12 +244,39 @@ function setContent(html){
 }
 function stat(label,value,sub=''){return `<div class="card stat"><div class="meta">${E(label)}</div><div class="value">${E(value)}</div><div class="meta">${E(sub)}</div></div>`;}
 function childCards(){const children=S.home.children||[];return `<div class="child-grid">${children.map(c=>`<button type="button" class="child-card ${S.childId===c.id?'selected':''}" data-action="switch-child" data-id="${E(c.id)}"><div class="row"><span class="badge-round">🎒</span><div><div class="child-name">${E(c.name)}</div><div class="small muted">NIS ${E(c.nis)} · ${E(className(c.classId))}</div></div></div></button>`).join('')}</div>`;}
-function renderDashboard(){const x=S.home,st=x.stats,cl=className(x.classId);const parent=role('ORANG_TUA');let html=head(parent?'Portal keluarga':'Ringkasan kegiatan','');
-  if(parent)html+=`<div class="card"><div class="panel-title">Anak terhubung <span class="pill green">${x.children.length} anak</span></div>${x.children.length?childCards():empty('Belum ada anak yang terhubung. Silakan ajukan penghubungan melalui menu Keluarga kepada Admin.')}</div>`;
-  else html+=`<div class="dashboard-class-banner"><span class="class-icon" aria-hidden="true">▦</span><span class="class-info">Kelas aktif: <b>${E(cl)}</b></span></div>`;
-  html+=`<div class="grid grid4 section-gap dashboard-stats">${parent?'':stat('Siswa di kelas',st.students)}${stat('Pengumuman terbit',st.notices)}${stat(parent?'Hari hadir tercatat':'Hadir hari ini',st.present||0,parent?`Dari ${st.daysRecorded||0} hari tercatat`:`Dari ${st.todayRecorded||0} absensi masuk`)}${stat('Catatan perilaku',st.behaviors)}</div>`;
+function renderDashboard(){const x=S.home,st=x.stats,cl=className(x.classId);const parent=role('ORANG_TUA');let html=head(parent?'Portal Orang Tua/Wali':'Ringkasan kegiatan','');
+  if(parent){
+    html+=`<div class="card parent-student-banner"><div class="panel-title">Nama Siswa ${x.children.length>1?`<span class="pill green">${x.children.length} anak</span>`:''}</div>${x.children.length?childCards():empty('Belum ada siswa yang terhubung. Hubungi Admin sekolah untuk memverifikasi relasi.')}</div>`;
+    html+=`<div class="grid grid4 section-gap dashboard-stats parent-dashboard-stats" aria-label="Ringkasan perkembangan siswa">
+      <div id="parent-stat-attendance">${stat('Kehadiran bulan ini','…','Memuat rincian hadir, izin, sakit, alpa')}</div>
+      <div id="parent-stat-behavior">${stat('Catatan perilaku',st.behaviors||0,'Memuat apresiasi dan pembinaan')}</div>
+      <div id="parent-stat-grades">${stat('Rata-rata nilai harian','—','Memuat nilai terpublikasi')}</div>
+      <div id="parent-stat-tahfidz">${stat('Capaian Tahfidz','—','Memuat target dan murojaah')}</div>
+    </div>`;
+  }else{
+    html+=`<div class="dashboard-class-banner"><span class="class-icon" aria-hidden="true">▦</span><span class="class-info">Kelas aktif: <b>${E(cl)}</b></span></div>`;
+    html+=`<div class="grid grid4 section-gap dashboard-stats">${stat('Siswa di kelas',st.students)}${stat('Pengumuman terbit',st.notices)}${stat('Hadir hari ini',st.present||0,`Dari ${st.todayRecorded||0} absensi masuk`)}${stat('Catatan perilaku',st.behaviors)}</div>`;
+  }
   html+=`<div class="grid grid2 section-gap dashboard-feeds"><div class="card"><div class="panel-title">Pengumuman terbaru <button type="button" class="btn btn-sm" data-action="nav" data-view="notices">Lihat semua</button></div><div class="stack">${x.notices.filter(a=>a.status==='PUBLISHED').slice(0,4).map(n=>`<div class="item"><div class="small muted">${E(n.createdAt.slice(0,10))} · ${E(n.scope==='SEKOLAH'?'Sekolah':className(n.classId))}</div><h3>${E(n.title)}</h3><p class="small">${E(n.body.slice(0,180))}</p></div>`).join('')||empty('Belum ada pengumuman.')}</div></div><div class="card"><div class="panel-title">Catatan perkembangan perilaku <button type="button" class="btn btn-sm" data-action="nav" data-view="behaviors">Selengkapnya</button></div><div class="stack">${x.behaviors.slice(0,4).map(b=>`<div class="item"><div class="item-head"><span class="pill ${b.kind==='POSITIF'?'green':'yellow'}">${b.kind==='POSITIF'?'Apresiasi':'Pembinaan'}</span><span class="small muted">${E(b.createdAt.slice(0,10))}</span></div><h3>${E(parent?'Untuk '+(x.currentChild?.name||'anak'):studentName(b.studentId))}</h3><p class="small">${E(b.description.slice(0,155))}</p></div>`).join('')||empty('Belum ada catatan perilaku.')}</div></div></div>`;
   setContent(html);
+  if(parent&&S.childId)void loadParentDashboardCards();
+}
+async function loadParentDashboardCards(){
+  const classId=S.classId,studentId=S.childId,requestKey=classId+'|'+studentId;
+  const current=()=>role('ORANG_TUA')&&S.classId===classId&&S.childId===studentId&&S.view==='dashboard';
+  // Tidak menahan Beranda: nilai dan Tahfidz dirender saat masing-masing respons siap.
+  cachedCall('progressReport',{classId,studentId},50000).then(r=>{
+    if(!current())return;
+    PARENT_GRADE_UI.report=r;PARENT_GRADE_UI.key=requestKey;
+    const month=r.attendance?.month;
+    const att=$('#parent-stat-attendance');
+    if(att)att.innerHTML=month?stat('Kehadiran bulan ini',month.present+' hadir',`Sakit ${month.sick} · Izin ${month.excused} · Alpa ${month.absent}`):stat('Kehadiran',r.attendance?.present||0,`Dari ${r.attendance?.total||0} hari tercatat`);
+    const behavior=$('#parent-stat-behavior');if(behavior)behavior.innerHTML=stat('Catatan perilaku',(r.behavior.positive+r.behavior.guidance),`${r.behavior.positive} apresiasi · ${r.behavior.guidance} pembinaan`);
+    const grades=$('#parent-stat-grades');if(grades){const g=r.parentGrades;grades.innerHTML=g?stat('Rata-rata nilai harian',g.dailyAverage===null?'—':formatParentGrade(g.dailyAverage),g.dailyCount+' nilai Harian/Proyek terpublikasi'):stat('Rata-rata nilai harian','—','Perbarui backend ke v4.8');}
+  }).catch(e=>{if(current()){console.warn('Ringkasan wali belum tersedia:',e.message);const el=$('#parent-stat-grades');if(el)el.innerHTML=stat('Rata-rata nilai harian','—','Data belum tersedia');const at=$('#parent-stat-attendance');if(at)at.innerHTML=stat('Kehadiran',S.home?.stats?.present||0,'Dari '+(S.home?.stats?.daysRecorded||0)+' hari tercatat');}});
+  cachedCall('tahStudentReport',{classId,studentId},60000).then(t=>{
+    if(!current())return;const e=$('#parent-stat-tahfidz');if(e)e.innerHTML=stat('Capaian Tahfidz',t.totalTarget?`${t.doneTarget} / ${t.totalTarget}`:'—',t.totalTarget?`ayat target · Murojaah ${t.murojaahSessions||0} sesi`:'Belum ada target · Murojaah '+(t.murojaahSessions||0)+' sesi');
+  }).catch(e=>{if(current()){const el=$('#parent-stat-tahfidz');if(el)el.innerHTML=stat('Capaian Tahfidz','—','Belum ada data Tahfidz');}});
 }
 function renderNotices(){const x=S.home,can=role('ADMIN','GURU_KELAS','GURU_MAPEL'),parent=role('ORANG_TUA');let html=head('Papan pengumuman','Jadwal, ujian, agenda, dan informasi penting untuk keluarga.');
   if(can)html+=`<div class="card"><div class="panel-title">Tulis pengumuman baru</div><form id="notice-form"><div class="form-grid"><div class="field"><label class="label">Judul</label><input name="title" maxlength="120" required placeholder="Contoh: Ujian Matematika"></div><div class="field"><label class="label">Jangkauan</label><select name="scope"><option value="KELAS">Kelas aktif</option>${role('ADMIN')?'<option value="SEKOLAH">Seluruh sekolah</option>':''}</select></div><div class="wide field"><label class="label">Isi pengumuman</label><textarea name="body" maxlength="3500" required placeholder="Informasi yang perlu disampaikan..."></textarea></div><div class="field"><label class="label">Status</label><select name="status"><option value="PUBLISHED">Publikasikan sekarang</option><option value="DRAFT">Simpan draft</option></select></div><div class="field"><label class="label">Konfirmasi orang tua</label><select name="requireConfirm"><option value="">Tidak wajib</option><option value="YES">Memerlukan konfirmasi dibaca</option></select></div></div><button type="submit" class="btn btn-primary">Simpan pengumuman</button></form></div>`;
@@ -541,6 +568,7 @@ async function openBehaviorFile(id){try{toast('Menyiapkan dokumen...');const d=a
 S.v2={journal:[],assessments:[],tasks:[],assessmentId:'',taskId:'',taskStudentId:'',fetchNo:0,detailRequest:0,journalKey:null,assessmentKey:null,taskKey:null};
 const ASSESS_UI={tab:'list',query:'',subject:'ALL',type:'ALL',status:'ALL',page:1,pageSize:8};
 S.progress={studentId:'',lastKey:'',report:null,requestId:0};
+const PARENT_GRADE_UI={report:null,key:'',period:'ALL',requestId:0};
 const isStaff=()=>role('ADMIN','KEPALA_SEKOLAH','GURU_KELAS','GURU_MAPEL');
 const canRecord=()=>role('ADMIN','GURU_KELAS','GURU_MAPEL');
 const canEditMapelUI=(id)=>role('ADMIN')||(S.home?.subjects||[]).some(s=>s.id===id);
@@ -623,7 +651,43 @@ function assessmentTabs(){
   if(!canRecord())return '';
   return `<nav class="module-tabs assess-inner-tabs" aria-label="Kelola asesmen"><button type="button" class="module-tab ${ASSESS_UI.tab==='list'?'active':''}" data-action="assessment-ui-tab" data-tab="list">▤ Daftar Asesmen</button><button type="button" class="module-tab ${ASSESS_UI.tab==='form'?'active':''}" data-action="assessment-ui-tab" data-tab="form">＋ Buat / Edit Asesmen</button></nav>`;
 }
+// SIPANDAI v4.8: tampilan wali hanya menerima data nilai TERPUBLIKASI dari progressReport.
+function formatParentGrade(value){return value===null||value===undefined||value===''?'—':Number(value).toLocaleString('id-ID',{maximumFractionDigits:2});}
+function parentGradeDate(s){const t=String(s||'');return /^\d{4}-\d{2}-\d{2}$/.test(t)?t.slice(8,10)+'/'+t.slice(5,7)+'/'+t.slice(0,4):t;}
+function renderParentGrades(){
+  const key=S.classId+'|'+S.childId;
+  let html=head('Nilai Pembelajaran','Nilai terpublikasi per mata pelajaran, terbaru berdasarkan tanggal pelaksanaan.');
+  html+=`<div class="card parent-grade-shell"><div class="parent-grade-toolbar"><div><div class="panel-title">Hasil belajar ${E(S.home.currentChild?.name||'siswa')}</div><p class="small muted">Rata-rata hanya dari Harian & Proyek. ASTS, ASAS, dan ASAT ditampilkan terpisah.</p></div><label class="field parent-grade-period"><span class="label">Tanggal pelaksanaan</span><select id="parent-grade-period" aria-label="Periode nilai"><option value="ALL">Semua tanggal · terbaru dulu</option><option value="30">30 hari terakhir</option><option value="90">90 hari terakhir</option><option value="365">1 tahun terakhir</option></select></label></div><div id="parent-grade-results" aria-live="polite">${loader()}</div></div>`;
+  setContent(html);
+  const period=$('#parent-grade-period');if(period)period.value=PARENT_GRADE_UI.period;
+  if(PARENT_GRADE_UI.key===key&&PARENT_GRADE_UI.report?.parentGrades){paintParentGrades(PARENT_GRADE_UI.report);return;}
+  const request=++PARENT_GRADE_UI.requestId,cl=S.classId,student=S.childId;
+  cachedCall('progressReport',{classId:cl,studentId:student},50000).then(r=>{
+    if(S.view!=='assessments'||S.childId!==student||S.classId!==cl||request!==PARENT_GRADE_UI.requestId)return;
+    PARENT_GRADE_UI.report=r;PARENT_GRADE_UI.key=key;paintParentGrades(r);
+  }).catch(e=>{const el=$('#parent-grade-results');if(el&&S.view==='assessments')el.innerHTML='<div class="notice warning">Gagal memuat nilai: '+E(e.message)+'</div>';});
+}
+function paintParentGrades(r){
+  const host=$('#parent-grade-results');if(!host)return;
+  if(!r.parentGrades){host.innerHTML='<div class="notice warning">Backend perlu diperbarui ke SIPANDAI v4.8 agar rata-rata harian dan nilai ASTS/ASAS/ASAT dapat dipisahkan.</div>';return;}
+  const g=r.parentGrades,days=Number(PARENT_GRADE_UI.period)||0;
+  const cutoff=days?new Date(Date.now()-days*86400000).toISOString().slice(0,10):'';
+  const groups=g.subjects.map(s=>{
+    const list=s.assessments.filter(a=>!cutoff||a.date>=cutoff);
+    const scoredDaily=list.filter(a=>(a.category==='HARIAN'||a.category==='PROYEK')&&Number.isFinite(a.score));
+    const avg=scoredDaily.length?scoredDaily.reduce((n,a)=>n+a.score,0)/scoredDaily.length:null;
+    return {...s,assessments:list,dailyCount:scoredDaily.length,dailyAverage:avg};
+  }).filter(s=>s.assessments.length);
+  const daily=groups.flatMap(x=>x.assessments).filter(a=>(a.category==='HARIAN'||a.category==='PROYEK')&&Number.isFinite(a.score));
+  const overall=daily.length?daily.reduce((n,a)=>n+a.score,0)/daily.length:null;
+  const overallLabel=daily.length?formatParentGrade(overall):'—';
+  let html=`<div class="parent-grade-summary"><div><span class="small muted">Rata-rata Harian + Proyek</span><strong>${E(overallLabel)}</strong><span class="small muted">${daily.length} nilai yang sudah dinilai</span></div><div><span class="small muted">Asesmen terpublikasi</span><strong>${groups.reduce((n,s)=>n+s.assessments.length,0)}</strong><span class="small muted">${groups.length} mata pelajaran</span></div></div>
+    <p class="parent-grade-explain">Nilai ASTS, ASAS, ASAT, dan kategori lainnya <b>tidak</b> dihitung dalam rata-rata harian. Ini bukan nilai akhir rapor.</p>`;
+  html+=groups.length?groups.map((s,i)=>`<details class="parent-grade-subject" ${i<2?'open':''}><summary><div><b>${E(s.name)}</b><span class="small muted">${s.assessments.length} asesmen · ${s.dailyCount} nilai harian/proyek</span></div><div class="parent-grade-avg"><span class="small muted">Rata-rata harian</span><strong>${E(formatParentGrade(s.dailyAverage))}</strong><span class="parent-grade-chevron">⌄</span></div></summary><div class="parent-grade-detail"><div class="parent-grade-labels"><span>Asesmen · tanggal pelaksanaan</span><span>Nilai</span></div>${s.assessments.map(a=>`<div class="parent-grade-row"><div class="parent-grade-about"><b>${E(a.name)}</b><div class="parent-grade-submeta"><span>${E(parentGradeDate(a.date))}</span><span class="parent-grade-type ${['ASTS','ASAS','ASAT'].includes(a.category)?'parent-grade-exam':''}">${E(({HARIAN:'Harian',PROYEK:'Proyek',LAINNYA:a.type})[a.category]||a.category)}</span></div>${a.feedback?`<div class="parent-grade-feedback">Catatan guru: ${E(a.feedback)}</div>`:''}</div><div class="parent-grade-score ${a.score===null?'parent-grade-unscored':''}">${a.score===null?'<span class="small muted">Belum dinilai</span>':E(formatParentGrade(a.score))}</div></div>`).join('')}</div></details>`).join(''):empty('Belum ada asesmen terpublikasi pada periode yang dipilih.');
+  host.innerHTML=html;
+}
 function renderAssessments(){
+  if(role('ORANG_TUA'))return renderParentGrades();
   const cl=S.classId,child=S.childId,scope=cl+'|'+child;
   if(!canRecord())ASSESS_UI.tab='list';
   let html=head('Asesmen & Nilai',role('ORANG_TUA')?'Nilai yang telah diterbitkan guru.':'Daftar asesmen dan penilaian siswa.');
@@ -805,8 +869,11 @@ function paintProgress(r){
     ${stat('Tugas selesai',t.done,'Dari '+t.total+' tugas yang telah diterbitkan')}
     ${stat('Catatan apresiasi',b.positive,'Pembinaan: '+b.guidance)}
   </div>`;
-  html+=`<div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Perkembangan nilai per mapel</div><p class="hint">Rata-rata sederhana dari asesmen yang sudah diterbitkan, bukan nilai akhir rapor.</p>
-    ${r.subjects.map(s=>`<div class="progress-subject"><div class="row-between"><b>${E(s.name)}</b><span class="progress-score">${E(s.average)}</span></div><div class="progress-meter"><span style="width:${Math.max(0,Math.min(100,s.average))}%"></span></div><div class="small muted">${s.count} asesmen · Nilai terbaru: ${E(s.latest)}</div><details class="section-gap"><summary class="small">Lihat rincian asesmen</summary><div class="stack section-gap">${s.marks.map(m=>`<div class="item"><div class="row-between"><b>${E(m.name)}</b><b>${E(m.score)}</b></div><div class="small muted">${E(m.date)} · ${E(m.type)}</div>${m.objective?`<p class="small">Tujuan: ${E(m.objective)}</p>`:''}${m.feedback?`<p class="small">Catatan: ${E(m.feedback)}</p>`:''}</div>`).join('')}</div></details></div>`).join('')||empty('Nilai terpublikasi belum tersedia.')}</div>
+  if(role('ORANG_TUA')&&r.parentGrades){
+    html+=`<div class="card section-gap"><div class="panel-title">Perkembangan nilai Harian & Proyek</div><p class="hint">Nilai ASTS, ASAS, dan ASAT tetap terpisah. Lihat rincian lengkap pada Pembelajaran → Asesmen & Nilai.</p><div class="grid grid2">${r.parentGrades.subjects.map(s=>`<div class="parent-progress-subject"><b>${E(s.name)}</b><div class="row-between"><span class="small muted">Rata-rata harian (${s.dailyCount} nilai)</span><strong>${E(formatParentGrade(s.dailyAverage))}</strong></div></div>`).join('')||empty('Belum ada asesmen terpublikasi.')}</div></div>`;
+  }
+  html+=`<div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Perkembangan nilai per mapel</div><p class="hint">${role('ORANG_TUA')?'Rincian asesmen terpublikasi. Rata-rata harian terpisah seperti ringkasan di atas.':'Rata-rata sederhana dari asesmen yang sudah diterbitkan, bukan nilai akhir rapor.'}</p>
+    ${r.subjects.map(s=>`<div class="progress-subject"><div class="row-between"><b>${E(s.name)}</b><span class="progress-score">${role('ORANG_TUA')?'':E(s.average)}</span></div>${role('ORANG_TUA')?'':`<div class="progress-meter"><span style="width:${Math.max(0,Math.min(100,s.average))}%"></span></div>`}<div class="small muted">${s.count} asesmen · Nilai terbaru: ${E(s.latest)}</div><details class="section-gap"><summary class="small">Lihat rincian asesmen</summary><div class="stack section-gap">${s.marks.map(m=>`<div class="item"><div class="row-between"><b>${E(m.name)}</b><b>${E(m.score)}</b></div><div class="small muted">${E(m.date)} · ${E(m.type)}</div>${m.objective?`<p class="small">Tujuan: ${E(m.objective)}</p>`:''}${m.feedback?`<p class="small">Catatan: ${E(m.feedback)}</p>`:''}</div>`).join('')}</div></details></div>`).join('')||empty('Nilai terpublikasi belum tersedia.')}</div>
     <div class="card"><div class="panel-title">Penugasan & tindak lanjut</div><div class="grid grid2"><div class="notice">Selesai: <b>${t.done}</b><div class="small">Dikumpulkan: ${t.submitted}</div></div><div class="notice">Perlu perbaikan: <b>${t.needsRevision}</b><div class="small">Belum terkumpul: ${t.missing}</div></div></div><div class="stack section-gap">${t.recent.map(x=>`<div class="item row-between"><div><b>${E(x.title)}</b><div class="small muted">Batas ${E(niceDate(x.dueAt))}</div></div>${statusPill(x.status)}</div>`).join('')||empty('Belum ada tugas yang diterbitkan.')}</div></div></div>`;
   html+=`<div class="grid grid2 section-gap"><div class="card"><div class="panel-title">Catatan perkembangan perilaku</div><div class="stack">${b.recent.map(x=>`<div class="item"><div class="row-between">${x.kind==='POSITIF'?'<span class="pill green">Apresiasi</span>':'<span class="pill yellow">Pembinaan</span>'}<span class="small muted">${E(x.date)}</span></div><p>${E(x.description)}</p>${x.followUp?`<p class="small">Tindak lanjut: ${E(x.followUp)}</p>`:''}</div>`).join('')||empty('Belum ada catatan perilaku yang dipublikasikan.')}</div></div>
     <div class="card"><div class="panel-title">Pesan perkembangan dari guru</div><div id="progress-notes" class="stack">${progressNotes(r)}</div></div></div>`;
@@ -874,7 +941,7 @@ document.addEventListener('submit',async ev=>{
   }
   if(formId==='review-form'){const d=fd(f);const res=await v2save('reviewSubmission',{...d,taskId:f.dataset.id,studentId:f.dataset.student},{refresh:false});if(res)loadTaskDetail(f.dataset.id,f.dataset.student);return;}
   if(formId==='task-comment-form'){const d=fd(f);const res=await v2save('commentTask',{...d,taskId:f.dataset.id,studentId:f.dataset.student},{refresh:false});if(res)loadTaskDetail(f.dataset.id,f.dataset.student);return;}
-  if(formId==='login-form') {try{busy(true);const loginStarted=Date.now();const r=await call('login',{...d,withHome:true});S.token=r.token;try{sessionStorage.setItem('sipandai_token',S.token);}catch(e){}S.user=r.user;S.attMode=r.user.role==='GURU_MAPEL'?'MAPEL':'HARIAN';S.attDate='';S.attMapel='';S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';S.menuCache.clear();USER_UI.tab='list';USER_UI.query='';USER_UI.editingId='';STUDENT_UI.tab='list';STUDENT_UI.query='';clearTahDom();S.view='dashboard';S.learningTab=r.user.role==='ORANG_TUA'?'assessments':'journal';
+  if(formId==='login-form') {try{busy(true);const loginStarted=Date.now();const r=await call('login',{...d,withHome:true});S.token=r.token;try{sessionStorage.setItem('sipandai_token',S.token);}catch(e){}S.user=r.user;S.attMode=r.user.role==='GURU_MAPEL'?'MAPEL':'HARIAN';S.attDate='';S.attMapel='';S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';PARENT_GRADE_UI.report=null;PARENT_GRADE_UI.key='';PARENT_GRADE_UI.period='ALL';S.menuCache.clear();USER_UI.tab='list';USER_UI.query='';USER_UI.editingId='';STUDENT_UI.tab='list';STUDENT_UI.query='';clearTahDom();S.view='dashboard';S.learningTab=r.user.role==='ORANG_TUA'?'assessments':'journal';
    if(r.user.mustChangePassword)passwordUI();
    else if(r.home){
      S.home=r.home;S.user=r.home.user;S.needsHome=false;S.classId=r.home.classId;S.childId=r.home.currentChild?.id||'';
@@ -1062,8 +1129,8 @@ document.addEventListener('click',async ev=>{
   }
   if(action==='task-file'){openTaskFile(b.dataset.id);return;}
   if(action==='mobile-more'){toggleMobileMore();return;}
-  if(action==='logout'){busy(true);processMessage('Mengakhiri sesi…');try{if(S.token)await call('logout');}catch(e){}finally{busy(false);}S.token='';S.user=null;S.home=null;S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';S.menuCache.clear();FAMILY.list=[];FAMILY.students=null;FAMILY.requests=null;FAMILY.query='';FAMILY.classFilter='';clearTahDom();S.needsHome=false;try{sessionStorage.removeItem('sipandai_token');}catch(e){}loginUI();return;}
-  if(action==='switch-child'){clearTahDom();S.progress.lastKey='';S.childId=b.dataset.id;S.v2.assessmentId='';S.v2.taskId='';S.classId=(S.home.children.find(x=>x.id===S.childId)||{}).classId||S.classId;try{await loadHome();}catch(e){toast(e.message,true);}return;}
+  if(action==='logout'){busy(true);processMessage('Mengakhiri sesi…');try{if(S.token)await call('logout');}catch(e){}finally{busy(false);}S.token='';S.user=null;S.home=null;S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';PARENT_GRADE_UI.report=null;PARENT_GRADE_UI.key='';PARENT_GRADE_UI.period='ALL';S.menuCache.clear();FAMILY.list=[];FAMILY.students=null;FAMILY.requests=null;FAMILY.query='';FAMILY.classFilter='';clearTahDom();S.needsHome=false;try{sessionStorage.removeItem('sipandai_token');}catch(e){}loginUI();return;}
+  if(action==='switch-child'){clearTahDom();S.progress.lastKey='';PARENT_GRADE_UI.report=null;PARENT_GRADE_UI.key='';PARENT_GRADE_UI.period='ALL';++PARENT_GRADE_UI.requestId;S.childId=b.dataset.id;S.v2.assessmentId='';S.v2.taskId='';S.classId=(S.home.children.find(x=>x.id===S.childId)||{}).classId||S.classId;try{await loadHome();}catch(e){toast(e.message,true);}return;}
   if(action==='confirm-notice')return submitAction('confirmNotice',{noticeId:b.dataset.id});
   if(action==='publish-notice')return submitAction('publishNotice',{id:b.dataset.id});
   if(action==='publish-behavior')return submitAction('publishBehavior',{id:b.dataset.id});
@@ -1094,6 +1161,7 @@ document.addEventListener('input',ev=>{
  if(ev.target.id==='family-parent-query'){FAMILY.parentQuery=ev.target.value;FAMILY.selectedParentId='';updateFamilyParentChoices();}
 });
 document.addEventListener('change',ev=>{
+ if(ev.target.id==='parent-grade-period'){PARENT_GRADE_UI.period=ev.target.value;if(PARENT_GRADE_UI.report)paintParentGrades(PARENT_GRADE_UI.report);return;}
  if(['assessment-filter-subject','assessment-filter-status','assessment-filter-type'].includes(ev.target.id)){const key=({'assessment-filter-subject':'subject','assessment-filter-status':'status','assessment-filter-type':'type'})[ev.target.id];ASSESS_UI[key]=ev.target.value;ASSESS_UI.page=1;paintAssessments();return;}
  if(ev.target.id==='family-class'){FAMILY.classFilter=ev.target.value;FAMILY.page=1;paintFamilyList();return;}
  if(ev.target.id==='family-link-class'){FAMILY.linkClassId=ev.target.value;void updateFamilyStudentChoices();return;}

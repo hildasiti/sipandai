@@ -338,3 +338,61 @@ html,body{min-height:100%;width:100%;}
  .assess-modal-footer .actions .btn{min-height:39px;padding:7px 9px;font-size:12px}
 }
 @media(max-width:350px){.assess-score-row{grid-template-columns:minmax(0,1fr) 66px 28px;column-gap:5px}.assess-note-toggle{width:28px}.assess-score-identity b{font-size:11px}}
+
+/* SIPANDAI v4.8 — orang tua / wali */
+.parent-student-banner{padding:15px 17px}.parent-student-banner .panel-title{margin-bottom:9px}
+.parent-student-banner .child-grid{grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:7px}
+.parent-student-banner .child-card{padding:10px 12px;border-radius:11px}
+.parent-student-banner .badge-round{height:29px;width:29px;font-size:17px;border-radius:9px}
+.parent-student-banner .child-name{font-size:13px}
+.parent-dashboard-stats>div{min-width:0}.parent-dashboard-stats .card{height:100%;min-height:119px;padding:15px}
+.parent-dashboard-stats .stat .meta{overflow-wrap:anywhere}
+.parent-grade-shell{max-width:1100px}
+.parent-grade-toolbar{display:flex;align-items:end;justify-content:space-between;gap:15px;flex-wrap:wrap;margin-bottom:15px}
+.parent-grade-toolbar .panel-title{margin-bottom:3px}
+.parent-grade-period{width:min(100%,285px);margin-bottom:0}
+.parent-grade-period select{min-height:36px;font-size:12px}
+.parent-grade-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:13px}
+.parent-grade-summary>div{background:#edf6f1;border:1px solid #dcebe2;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.parent-grade-summary strong{color:var(--green2);font-size:28px;line-height:1.25}
+.parent-grade-explain{font-size:12px;color:#5c7268;margin:0 0 16px}
+.parent-grade-subject{border:1px solid var(--line);background:#fff;border-radius:13px;margin:10px 0;overflow:hidden}
+.parent-grade-subject summary{display:flex;align-items:center;justify-content:space-between;gap:13px;padding:13px 16px;cursor:pointer;list-style:none;background:#fbfdfb}
+.parent-grade-subject summary::-webkit-details-marker{display:none}
+.parent-grade-subject summary b{font-size:14px}.parent-grade-subject summary .small{display:block}
+.parent-grade-avg{display:flex;align-items:center;gap:9px;flex-shrink:0}
+.parent-grade-avg strong{color:var(--green2);font-size:19px}.parent-grade-avg>.small{font-size:10px}
+.parent-grade-chevron{font-size:17px;color:#8eaaa0;transition:transform .15s}
+.parent-grade-subject[open] .parent-grade-chevron{transform:rotate(180deg)}
+.parent-grade-detail{border-top:1px solid var(--line)}
+.parent-grade-labels{display:grid;grid-template-columns:minmax(0,1fr) 80px;padding:7px 15px;color:#708279;background:#f5f9f6;font-size:11px;font-weight:750}
+.parent-grade-labels span:last-child{text-align:right}
+.parent-grade-row{display:grid;grid-template-columns:minmax(0,1fr) 80px;gap:14px;align-items:center;padding:11px 15px;border-top:1px solid #edf1ee}
+.parent-grade-about{min-width:0}.parent-grade-about>b{font-size:13px;line-height:1.3;display:block}
+.parent-grade-submeta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:3px;font-size:11px;color:var(--muted)}
+.parent-grade-type{background:#f0f5f2;border-radius:8px;padding:2px 7px;color:#506961}
+.parent-grade-exam{background:#fff4de;color:#895c14}
+.parent-grade-score{text-align:right;color:var(--green2);font-weight:850;font-size:19px}
+.parent-grade-unscored{font-weight:400;color:var(--muted);font-size:11px}
+.parent-grade-feedback{font-size:11px;margin-top:5px;color:#506d5d}
+.parent-progress-subject{padding:10px 12px;border:1px solid var(--line);border-radius:9px}
+.parent-progress-subject strong{font-size:17px;color:var(--green2)}
+@media(max-width:760px){
+ .parent-student-banner{padding:10px 12px}
+ .parent-student-banner .child-grid{grid-template-columns:1fr}
+ .parent-dashboard-stats .card{min-height:94px;padding:11px}
+ .parent-dashboard-stats .stat .value{font-size:23px}
+ .parent-dashboard-stats .stat .meta{font-size:10px;white-space:normal;overflow:visible}
+ .parent-grade-shell{padding:12px}
+ .parent-grade-toolbar{align-items:stretch}
+ .parent-grade-period{width:100%}
+ .parent-grade-summary>div{padding:10px}
+ .parent-grade-summary strong{font-size:22px}
+ .parent-grade-summary .small{font-size:10px}
+ .parent-grade-subject summary{padding:10px 11px;gap:7px}
+ .parent-grade-avg>.small{display:none}
+ .parent-grade-row{padding:9px 11px;grid-template-columns:minmax(0,1fr) 68px;gap:8px}
+ .parent-grade-about>b{font-size:12px}
+ .parent-grade-score{font-size:17px}
+ .parent-grade-labels{padding:6px 11px;grid-template-columns:minmax(0,1fr) 68px}
+}

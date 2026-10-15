@@ -1,7 +1,7 @@
 /* SIPANDAI PWA v4.9 — SIMPAN HANYA BERKAS STATIS, BUKAN DATA PENGGUNA. */
 'use strict';
-const CACHE='sipandai-static-v4.9-logo6';
-const SHELL=['./','./index.html','./styles.css','./app.js','./config.js','./manifest.webmanifest','./icons/sipandai-logo6-192.png','./icons/sipandai-logo6-512.png','./icons/sipandai-logo6-256.png','./icons/favicon-logo6-32.png','./icons/apple-touch-logo6.png'];
+const CACHE='sipandai-static-v4.10-excel';
+const SHELL=['./','./index.html','./styles.css','./app.js','./excel.js','./config.js','./manifest.webmanifest','./icons/sipandai-logo6-192.png','./icons/sipandai-logo6-512.png','./icons/sipandai-logo6-256.png','./icons/favicon-logo6-32.png','./icons/apple-touch-logo6.png'];
 const allow=new Set(SHELL.map(path=>new URL(path,self.registration.scope).href));
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL.map(path=>new Request(new URL(path,self.registration.scope),{cache:'reload'})))).then(()=>self.skipWaiting()));

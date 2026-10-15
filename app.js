@@ -168,7 +168,8 @@ function menuItems(){
   if(role('ADMIN','GURU_KELAS'))all.push('students','teachers');
   if(role('ADMIN','ORANG_TUA'))all.push('parents');
   if(role('ADMIN'))all.push('users','classes');
-  all.push('printing','settings');
+  if(!role('ORANG_TUA'))all.push('printing');
+  all.push('settings');
   return all;
 }
 const MOBILE_NAV=['dashboard','learning','tahfidz','notices','more'];
@@ -209,7 +210,7 @@ function prefetchTodayAttendance(){
     cachedCall('attendance',{classId:klass,date:day,mode:m,mapelId:s||'',sessionNo:S.sessionNo},45000).catch(()=>{});
   },450);
 }
-function render(){if(!S.home)return;document.querySelectorAll('[data-action=nav]').forEach(el=>el.classList.toggle('active',el.dataset.view===S.view||(el.dataset.view==='learning'&&isLearningView(S.view))));switch(S.view){case 'tahfidz':return renderTahfidz();case 'journal':return renderJournal();case 'assessments':return renderAssessments();case 'tasks':return renderTasks();case 'progress':return renderProgress();case 'dashboard':return renderDashboard();case 'printing':return renderPrinting();case 'notices':return renderNotices();case 'attendance':return renderAttendance();case 'behaviors':return renderBehaviors();case 'students':return renderStudents();case 'teachers':return renderTeachers();case 'parents':return renderParents();case 'requests':S.view='parents';FAMILY.tab='requests';return renderParents();case 'users':return renderUsers();case 'classes':return renderClasses();case 'settings':return renderSettings();default:S.view='dashboard';renderDashboard();}}
+function render(){if(!S.home)return;document.querySelectorAll('[data-action=nav]').forEach(el=>el.classList.toggle('active',el.dataset.view===S.view||(el.dataset.view==='learning'&&isLearningView(S.view))));switch(S.view){case 'tahfidz':return renderTahfidz();case 'journal':return renderJournal();case 'assessments':return renderAssessments();case 'tasks':return renderTasks();case 'progress':return renderProgress();case 'dashboard':return renderDashboard();case 'printing':if(role('ORANG_TUA')){S.view='dashboard';return renderDashboard();}return renderPrinting();case 'notices':return renderNotices();case 'attendance':return renderAttendance();case 'behaviors':return renderBehaviors();case 'students':return renderStudents();case 'teachers':return renderTeachers();case 'parents':return renderParents();case 'requests':S.view='parents';FAMILY.tab='requests';return renderParents();case 'users':return renderUsers();case 'classes':return renderClasses();case 'settings':return renderSettings();default:S.view='dashboard';renderDashboard();}}
 const LEARNING_VIEWS=['attendance','journal','assessments','tasks','behaviors'];
 function isLearningView(id){return LEARNING_VIEWS.includes(id);}
 function learningTabs(){
@@ -1239,61 +1240,78 @@ document.addEventListener('change',ev=>{
  if(ev.target.id==='progress-student'){S.progress.studentId=ev.target.value;loadProgress();return;}if(ev.target.id==='task-pick-student'){loadTaskDetail(S.v2.taskId,ev.target.value);return;}if(ev.target.id==='switch-class'){clearTahDom();S.progress.lastKey='';S.classId=ev.target.value;S.v2.assessmentId='';S.v2.taskId='';S.attMapel='';S.att=null;S.attEdit=false;setContent(head('Menyiapkan kelas', 'Memuat data dan pengampu kelas yang dipilih…')+loader());loadHome().catch(e=>toast(e.message,true));}if(ev.target.id==='att-mode'){S.attMode=ev.target.value;S.att=null;S.attEdit=false;S.pendingAttendance=null;renderAttendance();}});
 (async()=>{if(!S.token){loginUI();return;}try{await loadHome();prefetchTodayAttendance();}catch(e){S.token='';try{sessionStorage.removeItem('sipandai_token');}catch(x){}loginUI();toast('Sesi berakhir. Silakan login kembali.',true);}})();
 
-/* SIPANDAI v3.5: laporan dan cetak via browser; ekspor tabel ke CSV kompatibel Excel. */
+/* SIPANDAI v4.10 — Cetak horizontal dan Excel asli untuk e-Rapor. */
 let printableData=null;
 const PRINT_TITLES={tahfidzStudent:'Laporan Tahfidz Siswa',tahfidzClass:'Rekap Tahfidz Kelas',students:'Daftar Siswa',attendance:'Rekap Absensi',journal:'Jurnal Pembelajaran',scores:'Daftar Nilai Asesmen',tasks:'Rekap Penugasan',behaviors:'Catatan Perilaku',progress:'Laporan Perkembangan Belajar'};
 const PRINT_GROUPS=[
  {id:'akademik',icon:'▤',title:'Akademik',description:'Daftar siswa, jurnal, nilai, dan rekap penugasan.',types:['students','journal','scores','tasks']},
- {id:'kehadiran',icon:'▦',title:'Kehadiran',description:'Rekap kehadiran harian atau per mata pelajaran.',types:['attendance']},
+ {id:'kehadiran',icon:'▦',title:'Kehadiran',description:'Rekap kehadiran harian dan per mapel dalam bentuk horizontal.',types:['attendance']},
  {id:'tahfidz',icon:'◉',title:'Tahfidz',description:'Laporan hafalan individu dan rekap kelas.',types:['tahfidzStudent','tahfidzClass']},
  {id:'perkembangan',icon:'◴',title:'Perkembangan',description:'Laporan perkembangan belajar individual.',types:['progress']},
  {id:'pembinaan',icon:'♡',title:'Pembinaan',description:'Rekap apresiasi dan catatan perilaku.',types:['behaviors']}
 ];
 let PRINT_ACTIVE='akademik';
-function printGroups(){return PRINT_GROUPS.filter(g=>!role('ORANG_TUA')||['tahfidz','perkembangan'].includes(g.id));}
+function printGroups(){return role('ORANG_TUA')?[]:PRINT_GROUPS;}
 function printActiveGroup(){return printGroups().find(g=>g.id===PRINT_ACTIVE)||printGroups()[0];}
-function printTypeOptions(group){return group.types.filter(t=>!role('ORANG_TUA')||['progress','tahfidzStudent'].includes(t)).map(t=>`<option value="${t}">${E(PRINT_TITLES[t])}</option>`).join('');}
+function printTypeOptions(group){return group.types.map(t=>`<option value="${t}">${E(PRINT_TITLES[t])}</option>`).join('');}
+function printSubjectOptions(includeAll=false){
+ const ss=role('GURU_MAPEL')?(S.home?.subjects||[]):(S.home?.classSubjects||S.home?.subjects||[]);
+ return (includeAll?'<option value="">Semua mata pelajaran</option>':'')+ss.map(s=>`<option value="${E(s.id)}">${E(s.name)}</option>`).join('');
+}
 function renderPrinting(){
- const parent=role('ORANG_TUA'),k=S.home?.students||[],today=S.home?.serverDate||new Date().toISOString().slice(0,10);
- const group=printActiveGroup();PRINT_ACTIVE=group.id;
- let body=head('Cetak & Laporan','Pilih kategori dan buat pratinjau.');
+ if(role('ORANG_TUA')){S.view='dashboard';renderDashboard();return;}
+ const k=S.home?.students||[],today=S.home?.serverDate||new Date().toISOString().slice(0,10);
+ const month=Number(today.slice(5,7)),semesterStart=today.slice(0,4)+(month>=7?'-07-01':'-01-01');
+ const group=printActiveGroup();if(!group)return;PRINT_ACTIVE=group.id;
+ let body=head('Cetak & Laporan','Atur format, pratinjau, lalu cetak atau unduh Excel.');
  body+=`<nav class="module-tabs print-tabs" aria-label="Kategori laporan">${printGroups().map(g=>`<button type="button" class="module-tab ${g.id===PRINT_ACTIVE?'active':''}" data-action="print-tab" data-tab="${g.id}" aria-current="${g.id===PRINT_ACTIVE?'page':'false'}"><span aria-hidden="true">${g.icon}</span>${g.title}</button>`).join('')}</nav>`;
- body+=`<div class="grid grid2 print-main-grid"><div class="card"><div class="panel-title">Pengaturan dokumen</div><p id="print-group-description" class="hint">${E(group.description)}</p><form id="print-form" class="section-gap"><div class="form-grid"><div class="field wide"><label class="label">Jenis dokumen</label><select name="type" id="print-type">${printTypeOptions(group)}</select></div>${parent?'':`<div class="field" data-print-field="student"><label class="label">Siswa (laporan individual)</label><select name="studentId" id="print-student">${fillOptions(k,k[0]?.id||'','Pilih siswa')}</select></div>`}<div class="field" data-print-field="date"><label class="label">Dari tanggal</label><input type="date" name="from" value="${E(today.slice(0,7)+'-01')}"></div><div class="field" data-print-field="date"><label class="label">Sampai tanggal</label><input type="date" name="to" value="${E(today)}"></div>${parent?'':`<div class="field" data-print-field="mode"><label class="label">Jenis absensi</label><select name="mode"><option value="HARIAN">Harian</option><option value="MAPEL">Per mata pelajaran</option></select></div>`}<div class="field" data-print-field="period"><label class="label">Bulan aktivitas Tahfidz</label><input type="month" name="period" value="${E(today.slice(0,7))}"></div></div><div class="actions"><button type="submit" class="btn btn-primary">Buat pratinjau</button></div></form></div><div class="card print-help"><div class="panel-title">Petunjuk cetak</div><div class="stack"><div class="item"><b>1. Pilih jenis laporan</b><p class="hint">Gunakan tab kategori di atas. Setiap tab memiliki pilihan laporan yang relevan.</p></div><div class="item"><b>2. Periksa pratinjau</b><p class="hint">Pastikan kelas, siswa, periode, dan data sudah sesuai.</p></div><div class="item"><b>3. Cetak atau simpan PDF</b><p class="hint">Pilih printer atau Simpan sebagai PDF dari dialog browser; ekspor CSV tersedia untuk laporan tabel.</p></div></div></div></div>`;
- body+=`<div id="print-preview" class="card section-gap">${empty('Pilih dokumen lalu klik Buat pratinjau.')}</div>`;
- setContent(body);
- updatePrintFields();
+ body+=`<div class="card print-settings"><div class="panel-title">Pengaturan laporan</div><form id="print-form"><div class="print-filter-grid">
+ <div class="field" data-print-field="type"><label class="label">Jenis dokumen</label><select name="type" id="print-type">${printTypeOptions(group)}</select></div>
+ <div class="field" data-print-field="scoreMode"><label class="label">Bentuk daftar nilai</label><select name="scoreMode" id="print-score-mode"><option value="MAPEL">Per mata pelajaran</option><option value="SISWA">Per siswa (rekap mapel)</option></select></div>
+ <div class="field" data-print-field="student"><label class="label">Siswa</label><select name="studentId" id="print-student">${fillOptions(k,k[0]?.id||'','Pilih siswa')}</select></div>
+ <div class="field" data-print-field="mapel"><label class="label">Mata pelajaran</label><select name="mapelId" id="print-mapel">${printSubjectOptions()}</select></div>
+ <div class="field" data-print-field="date"><label class="label">Tanggal awal</label><input type="date" name="from" value="${E(semesterStart)}"></div>
+ <div class="field" data-print-field="date"><label class="label">Tanggal akhir</label><input type="date" name="to" value="${E(today)}"></div>
+ <div class="field" data-print-field="mode"><label class="label">Jenis absensi</label><select name="mode" id="print-att-mode">${role('GURU_MAPEL')?'':'<option value="HARIAN">Absensi harian</option>'}<option value="MAPEL">Absensi per mapel</option></select></div>
+ <div class="field" data-print-field="period"><label class="label">Bulan Tahfidz</label><input type="month" name="period" value="${E(today.slice(0,7))}"></div>
+ </div><div class="actions"><button type="submit" class="btn btn-primary">Buat Pratinjau</button></div><p id="print-filter-hint" class="hint"></p></form></div>`;
+ body+=`<div id="print-preview" class="card section-gap">${empty('Pilih laporan, lalu klik Buat Pratinjau.')}</div>`;
+ setContent(body);updatePrintFields();
 }
 function updatePrintFields(){
- const f=document.getElementById('print-form');
- if(S.view!=='printing'||!f)return;
+ const f=document.getElementById('print-form');if(S.view!=='printing'||!f)return;
  const type=f.elements.namedItem('type')?.value||'';
- const display={
-   student:['progress','tahfidzStudent'].includes(type),
-   date:['attendance','journal','scores','tasks','behaviors'].includes(type),
-   mode:type==='attendance',
-   period:type==='tahfidzClass'
- };
- f.querySelectorAll('[data-print-field]').forEach(el=>{
-   el.hidden=!display[el.dataset.printField];
- });
+ const mode=f.elements.namedItem('mode')?.value||'HARIAN';
+ const sm=f.elements.namedItem('scoreMode')?.value||'MAPEL';
+ const display={student:['progress','tahfidzStudent'].includes(type)||(type==='scores'&&sm==='SISWA'),date:['attendance','journal','scores','tasks','behaviors'].includes(type),mode:type==='attendance',scoreMode:type==='scores',mapel:(type==='scores'&&sm==='MAPEL')||(type==='attendance'&&mode==='MAPEL'),period:type==='tahfidzClass',type:true};
+ f.querySelectorAll('[data-print-field]').forEach(el=>{el.hidden=!display[el.dataset.printField];});
+ const mapel=f.elements.namedItem('mapelId');
+ if(mapel&&type==='attendance'&&mode==='MAPEL'){
+  const current=mapel.value;
+  mapel.innerHTML=printSubjectOptions(true);
+  mapel.value=current||'';
+ }else if(mapel&&type==='scores'&&sm==='MAPEL'){
+  const current=mapel.value;
+  mapel.innerHTML=printSubjectOptions(false);
+  if(current&&[...mapel.options].some(x=>x.value===current))mapel.value=current;
+ }
+ const hint=$('#print-filter-hint');if(hint)hint.textContent=type==='scores'?'Harian + Proyek masuk Rerata Harian. ASTS, ASAS, ASAT terpisah.':type==='attendance'?'Satu siswa per baris, tanggal menjadi kolom. Sel kosong berarti belum ada absensi.':' ';
 }
 function switchPrintTab(id){
  const group=printGroups().find(g=>g.id===id);if(!group)return;
  PRINT_ACTIVE=id;
  document.querySelectorAll('.print-tabs .module-tab').forEach(b=>{const active=b.dataset.tab===id;b.classList.toggle('active',active);b.setAttribute('aria-current',active?'page':'false');});
  const select=$('#print-type');if(select)select.innerHTML=printTypeOptions(group);
- const desc=$('#print-group-description');if(desc)desc.textContent=group.description;
- updatePrintFields();
- printableData=null;
+ updatePrintFields();printableData=null;
  const preview=$('#print-preview');if(preview)preview.innerHTML=empty('Kategori diubah. Buat pratinjau untuk laporan yang dipilih.');
 }
-/* Format cetak SIPANDAI: tampilan setara dashboard tetapi optimal untuk A4 dan PDF browser. */
-function sipDocShell(title,subtitle,content,meta=''){
+/* Format cetak SIPANDAI: tampilan A4/A4 landscape tergantung jenis laporan. */
+function sipDocShell(title,subtitle,content,meta='',wide=false){
  const stamp=new Date().toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'});
- return `<article class="sip-doc"><header class="sip-doc-head"><div class="sip-doc-brand"><img class="sip-doc-symbol" src="./icons/sipandai-logo6-256.png" alt="Logo SIPANDAI"><div><b>SIPANDAI</b><small>Informasi Pembelajaran & Pendampingan Anak</small></div></div><span class="sip-doc-type">LAPORAN SEKOLAH</span></header>
- <section class="sip-doc-title"><p class="sip-doc-eyebrow">Dokumen perkembangan pembelajaran</p><h1>${E(title)}</h1><p>${E(subtitle)}</p></section>
+ return `<article class="sip-doc${wide?' sip-doc-wide':''}"><header class="sip-doc-head"><div class="sip-doc-brand"><img class="sip-doc-symbol" src="./icons/sipandai-logo6-256.png" alt="Logo SIPANDAI"><div><b>SIPANDAI</b><small>Informasi Pembelajaran & Pendampingan Anak</small></div></div><span class="sip-doc-type">LAPORAN SEKOLAH</span></header>
+ <section class="sip-doc-title"><p class="sip-doc-eyebrow">Rekap pembelajaran</p><h1>${E(title)}</h1><p>${E(subtitle)}</p></section>
  ${meta?`<div class="sip-doc-meta">${meta}</div>`:''}${content}
- <footer class="sip-doc-footer"><span>Dicetak dari SIPANDAI · ${E(stamp)}</span><span>Data sesuai catatan yang tersedia dalam sistem</span></footer></article>`;
+ <footer class="sip-doc-footer"><span>Dicetak dari SIPANDAI · ${E(stamp)}</span><span>Dokumen internal sekolah; data sesuai pencatatan pada sistem</span></footer></article>`;
 }
 function sipMetric(label,number,help='') {return `<div class="sip-doc-metric"><span>${E(label)}</span><b>${E(number)}</b>${help?`<small>${E(help)}</small>`:''}</div>`;}
 function sipSection(title,body){return `<section class="sip-doc-card"><h2>${E(title)}</h2>${body}</section>`;}
@@ -1301,6 +1319,29 @@ function sipMiniBar(value){return `<div class="sip-doc-bar"><span style="width:$
 function printTable(data){
  const table=`<div class="sip-doc-table-scroll"><table class="sip-print-table"><thead><tr>${data.headers.map(h=>`<th>${E(h)}</th>`).join('')}</tr></thead><tbody>${data.rows.map(row=>`<tr>${row.map(c=>`<td>${E(c??'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
  return sipDocShell(PRINT_TITLES[data.type]||'Laporan SIPANDAI',`Kelas ${data.className||'-'}`,sipSection('Rincian data',table),`<div><strong>${E(data.from||'Semua tanggal')}</strong><small>Dari</small></div><div><strong>${E(data.to||'Sekarang')}</strong><small>Sampai</small></div><div><strong>${data.rows.length}</strong><small>Baris data</small></div>`);
+}
+/* Tabel horizontal: maksimal 12 kolom tanggal per halaman cetak, Excel tetap utuh. */
+function printWorkbook(data){
+ const isAttendance=data.type==='attendance',blocks=[];
+ for(const sheet of data.sheets||[]){
+  const heads=sheet.headers||[],rows=sheet.rows||[],fixed=isAttendance?3:0;
+  const partitions=isAttendance&&heads.length>fixed+13?Array.from({length:Math.ceil((heads.length-fixed-((data.mode==='HARIAN')?1:0))/12)},(_,i)=>{
+    const last=data.mode==='HARIAN'?[heads.length-1]:[];
+    const headerPositions=Array.from({length:Math.min(12,heads.length-fixed-last.length-i*12)},(_,j)=>fixed+i*12+j);
+    return [...Array(fixed).keys(),...headerPositions,...last];
+  }):[heads.map((_,i)=>i)];
+  partitions.forEach((indexes,part)=>{
+   const header=`<tr>${indexes.map(i=>`<th>${E(heads[i])}</th>`).join('')}</tr>`;
+   const body=rows.map(row=>`<tr>${indexes.map(i=>{
+     const raw=row[i];const value=isAttendance&&i>=fixed&&(data.mode!=='HARIAN'||i!==heads.length-1)?({Hadir:'H',Sakit:'S',Izin:'I',Alpa:'A'}[raw]||raw):raw;
+     return `<td${i===2?' class="sip-print-name"':''}>${E(value??'')}</td>`;
+   }).join('')}</tr>`).join('');
+   const label=`${sheet.title||sheet.name||'Rekap'}${partitions.length>1?` · Bagian ${part+1}/${partitions.length}`:''}`;
+   blocks.push(`<section class="sip-wide-sheet"><h2>${E(label)}</h2><div class="sip-doc-table-scroll"><table class="sip-print-table sip-wide-table"><thead>${header}</thead><tbody>${body}</tbody></table></div>${isAttendance?'<p class="sip-doc-small">H = Hadir · S = Sakit · I = Izin · A = Alpa · Kosong = belum tercatat</p>':''}</section>`);
+  });
+ }
+ const subtitle=`Kelas ${data.className||'-'} · ${data.from||'Semua tanggal'} s.d. ${data.to||'Hari ini'}`;
+ return sipDocShell(data.title||PRINT_TITLES[data.type],subtitle,blocks.join(''),`<div><strong>${(data.sheets||[]).length}</strong><small>Tabel / mata pelajaran</small></div>`,true);
 }
 function printTahSummary(t){
  if(!t)return '';
@@ -1333,21 +1374,43 @@ function renderPrintDoc(data){
  if(data.kind==='progress')return printProgress(data.report,data.tahfidz);
  if(data.kind==='tahfidzStudent')return printTahfidz(data.report);
  if(data.kind==='tahfidzClass')return printTahfidzClass(data.report);
+ if(data.kind==='workbook')return printWorkbook(data);
  return printTable(data);
 }
-
 function createPrintable(doc){document.getElementById('sip-print-root')?.remove();const wrap=document.createElement('div');wrap.id='sip-print-root';wrap.innerHTML=doc;document.body.appendChild(wrap);}
-function previewPrint(data){printableData=data;const wrap=$('#print-preview');if(!wrap)return;
- const doc=renderPrintDoc(data);
- wrap.innerHTML=`<div class="row-between"><strong>Pratinjau dokumen</strong><div class="actions"><button type="button" class="btn btn-primary" data-action="print-now">Cetak / Simpan PDF</button>${data.kind==='table'?'<button type="button" class="btn" data-action="export-csv">Unduh CSV untuk Excel</button>':''}</div></div><div class="sip-print-preview">${doc}</div>`;
+function previewPrint(data){
+ printableData=data;const wrap=$('#print-preview');if(!wrap)return;
+ wrap.innerHTML=`<div class="row-between print-preview-heading"><strong>Pratinjau dokumen</strong><div class="actions"><button type="button" class="btn btn-primary" data-action="print-now">Cetak / Simpan PDF</button>${data.kind==='workbook'?'<button type="button" class="btn" data-action="export-xlsx">Unduh Excel (.xlsx)</button>':data.kind==='table'?'<button type="button" class="btn" data-action="export-csv">Unduh CSV</button>':''}</div></div><div class="sip-print-preview">${renderPrintDoc(data)}</div>`;
 }
 function printNow(){if(!printableData)return;createPrintable(renderPrintDoc(printableData));window.print();}
 function csvCell(x){let v=String(x??'');if(/^[=+@\-]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"';}
-function exportCsv(){const d=printableData;if(!d||d.kind!=='table')return;const all=[d.headers,...d.rows].map(row=>row.map(csvCell).join(',')).join('\r\n');const blob=new Blob(['\ufeff'+all],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='SIPANDAI_'+d.type+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);}
-document.addEventListener('submit',async ev=>{if(ev.target.getAttribute('id')!=='print-form')return;ev.preventDefault();const f=ev.target,fd=Object.fromEntries(new FormData(f).entries());try{busy(true);const data=await call('printData',{...fd,classId:S.classId,studentId:role('ORANG_TUA')?S.childId:fd.studentId});previewPrint(data);}catch(err){toast('Gagal membuat laporan: '+err.message,true);}finally{busy(false);}},true);
-document.addEventListener('change',ev=>{if(ev.target?.id==='print-type'&&S.view==='printing')updatePrintFields();},true);
-document.addEventListener('click',ev=>{const b=ev.target.closest('[data-action]');if(!b)return;if(b.dataset.action==='print-tab'){ev.preventDefault();switchPrintTab(b.dataset.tab);return;}if(b.dataset.action==='print-now'){ev.preventDefault();printNow();}if(b.dataset.action==='export-csv'){ev.preventDefault();exportCsv();}},true);
-
+function exportCsv(){const d=printableData;if(!d||d.kind!=='table')return;const all=[d.headers,...d.rows].map(row=>row.map(csvCell).join(',')).join('\r\n');const blob=new Blob(['\ufeff'+all],{type:'text/csv;charset=utf-8'});downloadPrintBlob(blob,'SIPANDAI_'+d.type+'.csv');}
+function downloadPrintBlob(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);}
+function exportXlsx(){
+ const d=printableData;if(!d||d.kind!=='workbook')return;
+ if(typeof window.SipandaiXlsx!=='function'){toast('Modul Excel belum termuat. Muat ulang aplikasi.',true);return;}
+ try{
+  const bytes=window.SipandaiXlsx(d.sheets);
+  downloadPrintBlob(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),`SIPANDAI_${d.type}_${d.mode||d.scoreMode||'rekap'}_${d.from||'semua'}.xlsx`);
+ }catch(err){console.error('SIPANDAI Excel',err);toast('Gagal membuat Excel: '+(err.message||'Kesalahan tidak diketahui'),true);}
+}
+document.addEventListener('submit',async ev=>{
+ if(ev.target.getAttribute('id')!=='print-form')return;
+ ev.preventDefault();if(role('ORANG_TUA'))return;
+ const f=ev.target,fd=Object.fromEntries(new FormData(f).entries());
+ if(fd.from&&fd.to&&fd.from>fd.to){toast('Tanggal awal tidak boleh lebih besar dari tanggal akhir.',true);return;}
+ try{busy(true);const data=await call('printData',{...fd,classId:S.classId});previewPrint(data);}catch(err){toast('Gagal membuat laporan: '+err.message,true);}finally{busy(false);}
+},true);
+document.addEventListener('change',ev=>{
+ if(S.view==='printing'&&['print-type','print-score-mode','print-att-mode'].includes(ev.target?.id))updatePrintFields();
+},true);
+document.addEventListener('click',ev=>{
+ const b=ev.target.closest('[data-action]');if(!b)return;
+ if(b.dataset.action==='print-tab'){ev.preventDefault();switchPrintTab(b.dataset.tab);return;}
+ if(b.dataset.action==='print-now'){ev.preventDefault();printNow();return;}
+ if(b.dataset.action==='export-csv'){ev.preventDefault();exportCsv();return;}
+ if(b.dataset.action==='export-xlsx'){ev.preventDefault();exportXlsx();}
+},true);
 
 /* ===== SIPANDAI v3.6 | Modul Tahfidz & Murojaah ===== */
 const TAH={key:'',settings:null,klass:null,detail:null,studentId:'',period:'',request:0,tab:'overview',viewClass:'',savedDom:null};

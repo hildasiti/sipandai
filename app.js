@@ -1,4 +1,4 @@
-console.info('SIPANDAI v4.5 — Absensi otomatis & keandalan jaringan');
+console.info('SIPANDAI v4.6 — Asesmen ringkas & dialog nilai');
 'use strict';
 const S={token:'',user:null,home:null,view:'dashboard',classId:'',childId:'',additional:{},att:null,attEdit:false,attMode:'HARIAN',attDate:'',attMapel:'',sessionNo:'1',busy:false,menuCache:new Map(),needsHome:false,attRequest:0,learningTab:'journal'};
 try { S.token=sessionStorage.getItem('sipandai_token')||''; } catch(e) {}
@@ -539,6 +539,7 @@ async function openBehaviorFile(id){try{toast('Menyiapkan dokumen...');const d=a
 // Semua tombol dan formulir menggunakan delegasi event supaya render ulang tetap konsisten.
 /* ====================== UI SIPANDAI TAHAP 2 ====================== */
 S.v2={journal:[],assessments:[],tasks:[],assessmentId:'',taskId:'',taskStudentId:'',fetchNo:0,detailRequest:0,journalKey:null,assessmentKey:null,taskKey:null};
+const ASSESS_UI={tab:'list',query:'',subject:'ALL',type:'ALL',status:'ALL',page:1,pageSize:8};
 S.progress={studentId:'',lastKey:'',report:null,requestId:0};
 const isStaff=()=>role('ADMIN','KEPALA_SEKOLAH','GURU_KELAS','GURU_MAPEL');
 const canRecord=()=>role('ADMIN','GURU_KELAS','GURU_MAPEL');
@@ -618,41 +619,92 @@ function editJournal(id){const j=S.v2.journal.find(x=>x.id===id),f=$('#journal-f
 
 /* ----------------------------- ASESMEN ------------------------------- */
 function assessmentForm(){return `<div class="card"><div class="panel-title">Buat asesmen / atur informasi</div><form id="assessment-form"><input type="hidden" name="id"><div class="form-grid"><div class="field"><label class="label">Mata pelajaran</label><select name="mapelId" required>${subjectOptions()}</select></div><div class="field"><label class="label">Tanggal</label><input type="date" name="date" value="${E(S.home.serverDate)}" required></div><div class="field"><label class="label">Jenis asesmen</label><select name="type" id="assess-type"><option value="Asesmen Harian">Asesmen Harian</option><option value="Asesmen Tengah Semester">Asesmen Tengah Semester</option><option value="Asesmen Akhir Semester">Asesmen Akhir Semester</option><option value="Asesmen Akhir Tahun">Asesmen Akhir Tahun</option><option value="LAINNYA">Nama kategori lainnya...</option></select></div><div class="field"><label class="label">Kategori tambahan (bila memilih lainnya)</label><input name="customType" maxlength="100" placeholder="Contoh: Praktik / Proyek"></div><div class="field wide"><label class="label">Nama kegiatan asesmen</label><input name="name" maxlength="140" required placeholder="Contoh: Asesmen Harian 1 — Pecahan"></div><div class="field wide"><label class="label">Tujuan pembelajaran (opsional)</label><textarea name="objective" maxlength="1600" placeholder="Tujuan yang dinilai pada asesmen ini..."></textarea></div></div>${ownSubjectsHint()}<div class="actions"><button class="btn btn-primary" type="submit" ${!S.home.subjects.length?'disabled':''}>Simpan sebagai draft</button><button type="button" class="btn" data-action="clear-assessment">Asesmen baru</button></div></form></div>`;}
+function assessmentTabs(){
+  if(!canRecord())return '';
+  return `<nav class="module-tabs assess-inner-tabs" aria-label="Kelola asesmen"><button type="button" class="module-tab ${ASSESS_UI.tab==='list'?'active':''}" data-action="assessment-ui-tab" data-tab="list">▤ Daftar Asesmen</button><button type="button" class="module-tab ${ASSESS_UI.tab==='form'?'active':''}" data-action="assessment-ui-tab" data-tab="form">＋ Buat / Edit Asesmen</button></nav>`;
+}
 function renderAssessments(){
   const cl=S.classId,child=S.childId,scope=cl+'|'+child;
-  let html=head('Asesmen & Nilai',role('ORANG_TUA')?'Nilai asesmen yang sudah dipublikasikan guru.':'Input nilai massal dan kendalikan publikasi kepada orang tua.');
-  if(canRecord()&&cl)html+=assessmentForm();
-  if(!cl&&role('GURU_MAPEL'))html+='<div class="notice warning">Akun Guru Mapel belum mendapatkan penugasan kelas. Silakan minta Guru Kelas menentukan pengampu.</div>';
-  html+='<div id="assessment-list" class="section-gap"><div class="notice">Menyiapkan daftar asesmen…</div></div><div id="assessment-detail" class="section-gap"></div>';
+  if(!canRecord())ASSESS_UI.tab='list';
+  let html=head('Asesmen & Nilai',role('ORANG_TUA')?'Nilai yang telah diterbitkan guru.':'Daftar asesmen dan penilaian siswa.');
+  html+=assessmentTabs();
+  if(ASSESS_UI.tab==='form'&&canRecord()&&cl){
+    html+=assessmentForm();
+    html+='<div class="actions section-gap"><button type="button" class="btn btn-outline" data-action="assessment-ui-tab" data-tab="list">← Kembali ke daftar asesmen</button></div>';
+  }else{
+    if(!cl&&role('GURU_MAPEL'))html+='<div class="notice warning">Akun Guru Mapel belum mendapatkan penugasan kelas. Minta Guru Kelas menentukan pengampu.</div>';
+    html+=`<section id="assessment-list" class="card assess-catalog" aria-label="Daftar asesmen">
+      <div class="row-between assess-list-heading"><div><div class="panel-title">Daftar Asesmen <span class="pill" id="assessment-total">0</span></div><p class="small muted">Cari asesmen, pilih filter, lalu buka nilai siswa.</p></div><button type="button" class="btn btn-sm btn-outline" data-action="assessment-reload" title="Perbarui daftar asesmen">↻ Perbarui</button></div>
+      <div class="assess-filters"><label class="field"><span class="label">Cari asesmen</span><input type="search" id="assessment-search" placeholder="Nama asesmen, mapel atau tanggal…" value="${E(ASSESS_UI.query)}" autocomplete="off"></label>
+      <label class="field"><span class="label">Mata pelajaran</span><select id="assessment-filter-subject"><option value="ALL">Semua mapel</option></select></label>
+      <label class="field"><span class="label">Status</span><select id="assessment-filter-status"><option value="ALL">Semua status</option><option value="DRAFT">Draft</option><option value="PUBLISHED">Dipublikasikan</option></select></label>
+      <label class="field"><span class="label">Jenis</span><select id="assessment-filter-type"><option value="ALL">Semua jenis</option></select></label></div>
+      <div id="assessment-results" aria-live="polite">${loader()}</div>
+    </section>`;
+  }
   setContent(html);
-  if(S.v2.assessmentKey===scope)paintAssessments();
+  if(ASSESS_UI.tab==='form')return;
+  if(S.v2.assessmentKey===scope){paintAssessments();}
   if(cl){const no=++S.v2.fetchNo;
     cachedCall('assessmentList',{classId:cl,studentId:role('ORANG_TUA')?child:''},40000).then(list=>{
-      if(S.view!=='assessments'||S.classId!==cl||S.childId!==child||no!==S.v2.fetchNo)return;
+      if(S.view!=='assessments'||S.classId!==cl||S.childId!==child||no!==S.v2.fetchNo||ASSESS_UI.tab!=='list')return;
       S.v2.assessmentKey=scope;S.v2.assessments=list;paintAssessments();
-    }).catch(err=>{const el=$('#assessment-list');if(el)el.innerHTML='<div class="notice">'+E(err.message)+'</div>';});
+    }).catch(err=>{const el=$('#assessment-results');if(el)el.innerHTML='<div class="notice warning">'+E(err.message)+'</div>';});
   }else{S.v2.assessments=[];paintAssessments();}
 }
 function paintAssessments(){
-  const el=$('#assessment-list');if(!el)return;
-  const list=S.v2.assessments;
-  el.innerHTML=`<div class="card section-gap"><div class="panel-title">Daftar asesmen <span class="pill">${list.length}</span></div><div class="stack">${list.map(a=>`<div class="item"><div class="row-between"><div><b>${E(a.name)}</b><div class="small muted">${E(getSubjectName(a.mapelId))} · ${E(a.date)} · ${E(a.type)}</div></div>${statusPill(a.status)}</div><div class="actions"><button class="btn btn-sm btn-outline" data-action="assessment-detail" data-id="${E(a.id)}">${role('ORANG_TUA')?'Lihat nilai':'Nilai siswa'}</button>${canRecord()&&canEditMapelUI(a.mapelId)&&a.status==='DRAFT'?`<button class="btn btn-sm" data-action="edit-assessment" data-id="${E(a.id)}">Ubah info</button><button class="btn btn-sm btn-primary" data-action="publish-assessment" data-id="${E(a.id)}" data-publish="true">Publikasikan</button>`:''}${canRecord()&&canEditMapelUI(a.mapelId)&&a.status==='PUBLISHED'?`<button class="btn btn-sm" data-action="publish-assessment" data-id="${E(a.id)}" data-publish="false">Tarik publikasi</button>`:''}${canRecord()&&canEditMapelUI(a.mapelId)?`<button class="btn btn-sm" data-action="archive-assessment" data-id="${E(a.id)}">Hapus asesmen & nilai</button>`:''}</div></div>`).join('')||empty('Belum ada asesmen tersedia.')}</div></div>`;
+  const el=$('#assessment-results');if(!el)return;
+  const all=S.v2.assessments||[],query=ASSESS_UI.query.trim().toLocaleLowerCase('id-ID');
+  const subject=$('#assessment-filter-subject'),type=$('#assessment-filter-type'),status=$('#assessment-filter-status');
+  if(subject){subject.innerHTML='<option value="ALL">Semua mapel</option>'+[...new Set(all.map(a=>a.mapelId).filter(Boolean))].map(id=>`<option value="${E(id)}">${E(getSubjectName(id))}</option>`).join('');subject.value=ASSESS_UI.subject;if(subject.selectedIndex<0){ASSESS_UI.subject='ALL';subject.value='ALL';}}
+  if(type){type.innerHTML='<option value="ALL">Semua jenis</option>'+[...new Set(all.map(a=>a.type).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'id')).map(t=>`<option value="${E(t)}">${E(t)}</option>`).join('');type.value=ASSESS_UI.type;if(type.selectedIndex<0){ASSESS_UI.type='ALL';type.value='ALL';}}
+  if(status)status.value=ASSESS_UI.status;
+  const list=all.filter(a=>(ASSESS_UI.subject==='ALL'||a.mapelId===ASSESS_UI.subject)&&(ASSESS_UI.type==='ALL'||a.type===ASSESS_UI.type)&&(ASSESS_UI.status==='ALL'||a.status===ASSESS_UI.status)&&(!query||[a.name,a.type,a.date,getSubjectName(a.mapelId)].some(t=>String(t||'').toLocaleLowerCase('id-ID').includes(query))));
+  const pages=Math.max(1,Math.ceil(list.length/ASSESS_UI.pageSize));ASSESS_UI.page=Math.min(Math.max(1,ASSESS_UI.page),pages);
+  const shown=list.slice((ASSESS_UI.page-1)*ASSESS_UI.pageSize,ASSESS_UI.page*ASSESS_UI.pageSize);
+  const total=$('#assessment-total');if(total)total.textContent=list.length+' / '+all.length;
+  el.innerHTML=`<div class="assess-list-grid">${shown.map(a=>`<article class="assess-list-item"><div class="row-between assess-item-top"><div class="assess-name">${E(a.name)}</div>${statusPill(a.status)}</div><div class="assess-meta">${E(getSubjectName(a.mapelId))} · ${E(a.date)}<span class="assess-type">${E(a.type)}</span></div>
+    <div class="assess-item-actions"><button class="btn btn-sm btn-primary" data-action="assessment-detail" data-id="${E(a.id)}">${role('ORANG_TUA')?'Lihat Nilai':'Nilai Siswa ↗'}</button>${canRecord()&&canEditMapelUI(a.mapelId)&&a.status==='DRAFT'?`<button class="btn btn-sm btn-outline" data-action="edit-assessment" data-id="${E(a.id)}">Edit Info</button><button class="btn btn-sm" data-action="publish-assessment" data-id="${E(a.id)}" data-publish="true">Publikasikan</button>`:''}${canRecord()&&canEditMapelUI(a.mapelId)&&a.status==='PUBLISHED'?`<button class="btn btn-sm" data-action="publish-assessment" data-id="${E(a.id)}" data-publish="false">Tarik Publikasi</button>`:''}${canRecord()&&canEditMapelUI(a.mapelId)?`<button class="btn btn-sm btn-danger" data-action="archive-assessment" data-id="${E(a.id)}">Arsip</button>`:''}</div></article>`).join('')||'<div class="empty">Tidak ditemukan asesmen yang sesuai filter.</div>'}</div><div class="assess-pagination"><span>Menampilkan ${list.length?((ASSESS_UI.page-1)*ASSESS_UI.pageSize+1):0}–${Math.min(list.length,ASSESS_UI.page*ASSESS_UI.pageSize)} dari ${list.length} asesmen</span><div class="actions"><button type="button" class="btn btn-sm btn-outline" data-action="assessment-page" data-page="${ASSESS_UI.page-1}" ${ASSESS_UI.page<=1?'disabled':''}>← Sebelumnya</button><span class="assess-page-label">${ASSESS_UI.page} / ${pages}</span><button type="button" class="btn btn-sm btn-outline" data-action="assessment-page" data-page="${ASSESS_UI.page+1}" ${ASSESS_UI.page>=pages?'disabled':''}>Berikutnya →</button></div></div>`;
 }
-async function loadAssessmentDetail(id){S.v2.assessmentId=id;const queryNo=++S.v2.detailRequest;const host=$('#assessment-detail');if(!host)return;host.innerHTML=loader();
-  try{const d=await cachedCall('assessmentDetail',{id,studentId:role('ORANG_TUA')?S.childId:''},13000);
-    const h=$('#assessment-detail');if(!h||S.v2.assessmentId!==id||queryNo!==S.v2.detailRequest||S.view!=='assessments')return;
-    if(role('ORANG_TUA')){h.innerHTML=`<div class="card"><div class="panel-title">${E(d.assessment.name)}</div><div class="grid grid2"><div class="notice">Nilai terpublikasi: <b style="font-size:24px">${E(d.score===''?'Belum dinilai':d.score)}</b></div><div class="notice">${E(d.feedback||'Belum ada catatan dari guru.')}</div></div></div>`;return;}
+function closeAssessmentModal(force=false){
+  const modal=$('#assessment-score-modal');if(!modal)return;
+  if(!force&&S.busy){toast('Tunggu penyimpanan selesai.');return;}
+  modal.remove();document.body.classList.remove('assess-modal-open');S.v2.assessmentId='';++S.v2.detailRequest;
+  const opener=document.querySelector('[data-action="assessment-detail"]:focus');if(opener)opener.focus();
+}
+function assessmentModalSkeleton(){
+  closeAssessmentModal(true);
+  const modal=document.createElement('div');modal.id='assessment-score-modal';modal.className='assess-modal';
+  modal.innerHTML=`<section class="assess-modal-panel" role="dialog" aria-modal="true" aria-labelledby="assess-dialog-title" tabindex="-1"><header class="assess-modal-header"><div><div class="small muted">SIPANDAI · Asesmen & Nilai</div><h2 id="assess-dialog-title">Memuat nilai siswa…</h2></div><button type="button" class="assess-close" data-action="assessment-close-modal" aria-label="Tutup dialog">✕</button></header><div class="assess-modal-body" id="assessment-modal-body">${loader()}</div></section>`;
+  document.body.appendChild(modal);document.body.classList.add('assess-modal-open');modal.querySelector('.assess-modal-panel')?.focus();return modal;
+}
+async function loadAssessmentDetail(id){
+  const modal=assessmentModalSkeleton();S.v2.assessmentId=id;const queryNo=++S.v2.detailRequest;
+  try{
+    const d=await cachedCall('assessmentDetail',{id,studentId:role('ORANG_TUA')?S.childId:''},13000);
+    const h=modal.querySelector('#assessment-modal-body');
+    if(!h||!modal.isConnected||S.v2.assessmentId!==id||queryNo!==S.v2.detailRequest||S.view!=='assessments')return;
+    const title=modal.querySelector('#assess-dialog-title');title.textContent=d.assessment.name;
+    if(role('ORANG_TUA')){h.innerHTML=`<div class="assess-parent-result"><div class="notice">Nilai terpublikasi: <strong>${E(d.score===''?'Belum dinilai':d.score)}</strong></div><div class="notice">${E(d.feedback||'Belum ada catatan dari guru.')}</div></div>`;return;}
     const editable=d.editable;
-    h.innerHTML=`<div class="card"><div class="panel-title">Nilai: ${E(d.assessment.name)} ${statusPill(d.assessment.status)}</div>${d.objective?`<p class="small muted">Tujuan: ${E(d.objective)}</p>`:''}<p class="hint">Rentang nilai 0–100. Biarkan kosong jika belum dinilai. Simpan secara massal, lalu publikasikan saat sudah diperiksa.</p><form id="score-form" data-id="${E(id)}"><div class="table-wrap section-gap"><table><thead><tr><th>Siswa</th><th>Nilai</th><th>Catatan</th></tr></thead><tbody>${d.rows.map(s=>`<tr data-student-id="${E(s.id)}"><td><b>${E(s.name)}</b><div class="small muted">${E(s.nis)}</div></td><td><input type="number" class="score-input" min="0" max="100" step="0.01" value="${E(s.score)}" ${editable?'':'disabled'}></td><td><input class="score-note" maxlength="600" value="${E(s.feedback)}" ${editable?'':'disabled'}></td></tr>`).join('')}</tbody></table></div>${editable?'<div class="actions"><button type="submit" class="btn btn-primary">Simpan semua nilai</button></div>':'<div class="notice section-gap">Nilai tidak dapat diubah pada status ini. Jika sudah terbit, tarik publikasi sebelum mengoreksi.</div>'}</form></div>`;
-  }catch(e){toast(e.message,true);const h=$('#assessment-detail');if(h)h.innerHTML=empty('Gagal membuka nilai.');}
+    const rows=d.rows||[];
+    h.innerHTML=`${d.objective?`<p class="assess-objective">Tujuan: ${E(d.objective)}</p>`:''}<div class="assess-score-instructions">${rows.length} siswa · Nilai 0–100 · Kosongkan jika belum dinilai${editable?' · Simpan semua sekaligus':''}</div>
+      <form id="score-form" data-id="${E(id)}">
+      <div class="assess-score-list">${rows.map((s,i)=>`<div class="assess-score-row" data-student-id="${E(s.id)}"><div class="assess-score-student"><span class="assess-score-num">${i+1}</span><div><b>${E(s.name)}</b><div class="small muted">${E(s.nis)}</div></div></div><label class="assess-score-field"><span>Nilai</span><input type="number" class="score-input" min="0" max="100" step="0.01" aria-label="Nilai ${E(s.name)}" value="${E(s.score)}" ${editable?'':'disabled'}></label><label class="assess-score-field assess-note-field"><span>Catatan (opsional)</span><input class="score-note" maxlength="600" aria-label="Catatan ${E(s.name)}" value="${E(s.feedback)}" ${editable?'':'disabled'}></label></div>`).join('')}</div>
+      <footer class="assess-modal-footer"><span class="small muted" id="assess-save-status">${editable?'Pastikan nilai sudah sesuai sebelum dipublikasikan.':'Nilai hanya dapat diubah saat asesmen berstatus Draft.'}</span><div class="actions"><button type="button" class="btn btn-outline" data-action="assessment-close-modal">Tutup</button>${editable?'<button type="submit" class="btn btn-primary">Simpan Semua Nilai</button>':''}</div></footer></form>`;
+  }catch(e){toast(e.message,true);const h=modal.querySelector('#assessment-modal-body');if(h&&modal.isConnected)h.innerHTML='<div class="notice warning">Gagal membuka nilai: '+E(e.message)+'</div>';}
 }
-async function editAssessment(id){const a=S.v2.assessments.find(x=>x.id===id),f=$('#assessment-form');if(!a||!f)return;
-  try{const d=await call('assessmentDetail',{id});f.elements.id.value=id;f.elements.mapelId.value=a.mapelId;f.elements.mapelId.disabled=true;
+async function editAssessment(id){
+  const a=S.v2.assessments.find(x=>x.id===id);if(!a)return;
+  ASSESS_UI.tab='form';renderAssessments();
+  const f=$('#assessment-form');if(!f)return;
+  try{const d=await cachedCall('assessmentDetail',{id},13000);if(!f.isConnected)return;
+    f.elements.id.value=id;f.elements.mapelId.value=a.mapelId;f.elements.mapelId.disabled=true;
     f.elements.name.value=a.name;f.elements.date.value=a.date;f.elements.objective.value=d.objective||'';
     const types=['Asesmen Harian','Asesmen Tengah Semester','Asesmen Akhir Semester','Asesmen Akhir Tahun'];
     f.elements.type.value=types.includes(a.type)?a.type:'LAINNYA';f.elements.customType.value=types.includes(a.type)?'':a.type;
     f.scrollIntoView({behavior:'smooth',block:'start'});
-  }catch(e){toast(e.message,true);}
+  }catch(e){toast('Tidak dapat memuat informasi asesmen: '+e.message,true);}
 }
 
 /* ------------------------- TUGAS / KUIS ------------------------------ */
@@ -796,10 +848,14 @@ document.addEventListener('submit',async ev=>{
   }
   if(formId==='progress-note-form')return saveProgressForm(f);
   if(formId==='journal-form')return v2save('saveJournal',{...d,classId:S.classId});
-  if(formId==='assessment-form'){const d=fd(f);if(f.elements.mapelId.disabled)d.mapelId=f.elements.mapelId.value;return v2save('saveAssessment',{...d,classId:S.classId});}
+  if(formId==='assessment-form'){const d=fd(f);if(f.elements.mapelId.disabled)d.mapelId=f.elements.mapelId.value;const res=await v2save('saveAssessment',{...d,classId:S.classId});if(res){ASSESS_UI.tab='list';ASSESS_UI.page=1;renderAssessments();}return;}
   if(formId==='score-form'){
-    const rows=[...f.querySelectorAll('.att-student[data-student-id]')].map(tr=>({studentId:tr.dataset.studentId,score:tr.querySelector('.score-input').value,feedback:tr.querySelector('.score-note').value}));
-    const res=await v2save('saveScores',{assessmentId:f.dataset.id,rows},{refresh:false});if(res){forgetMenuCache('assessmentDetail');loadAssessmentDetail(f.dataset.id);}return;
+    // Baris nilai memakai data-student-id; selector .att-student milik modul Absensi dan sebelumnya menghasilkan rows: [].
+    const rows=[...f.querySelectorAll('.assess-score-row[data-student-id]')].map(tr=>({studentId:tr.dataset.studentId,score:tr.querySelector('.score-input').value.trim(),feedback:tr.querySelector('.score-note').value.trim()}));
+    if(!rows.length){toast('Daftar siswa kosong. Tutup lalu buka kembali Nilai Siswa.',true);return;}
+    if(rows.some(x=>x.score!==''&&(!Number.isFinite(Number(x.score))||Number(x.score)<0||Number(x.score)>100))){toast('Nilai harus dalam rentang 0 sampai 100.',true);return;}
+    const res=await v2save('saveScores',{assessmentId:f.dataset.id,rows},{refresh:false});
+    if(res){forgetMenuCache('assessmentDetail','progressReport');closeAssessmentModal(true);}return;
   }
   if(formId==='task-form'){const d=fd(f);if(f.elements.mapelId.disabled)d.mapelId=f.elements.mapelId.value;return v2save('saveTask',{...d,classId:S.classId});}
   if(formId==='submission-form'){
@@ -952,7 +1008,7 @@ document.addEventListener('click',async ev=>{
       forgetMenuCache('journalList','assessmentList','assessmentDetail','taskList','taskDetail');
       S.progress.lastKey='';
       if(info[2]==='journal'){S.v2.journal=S.v2.journal.filter(x=>x.id!==b.dataset.id);paintJournal();}
-      else if(info[2]==='assessments'){S.v2.assessments=S.v2.assessments.filter(x=>x.id!==b.dataset.id);S.v2.assessmentId='';paintAssessments();const h=$('#assessment-detail');if(h)h.innerHTML='';}
+      else if(info[2]==='assessments'){S.v2.assessments=S.v2.assessments.filter(x=>x.id!==b.dataset.id);closeAssessmentModal(true);paintAssessments();}
       else if(info[2]==='tasks'){S.v2.tasks=S.v2.tasks.filter(x=>x.id!==b.dataset.id);S.v2.taskId='';paintTasks();const h=$('#task-detail-host');if(h)h.innerHTML='';}
       else {S.needsHome=true;await loadHome();}
       toast('Data telah diarsipkan dan tidak lagi ditampilkan.');
@@ -960,6 +1016,13 @@ document.addEventListener('click',async ev=>{
   }
   if(action==='edit-journal'){editJournal(b.dataset.id);return;}
   if(action==='clear-journal'){const f=$('#journal-form');if(f){f.reset();f.elements.id.value='';}return;}
+  if(action==='assessment-close-modal'){closeAssessmentModal();return;}
+  if(action==='assessment-ui-tab'){
+    if(b.dataset.tab==='form'&&!canRecord())return;
+    ASSESS_UI.tab=b.dataset.tab==='form'?'form':'list';renderAssessments();return;
+  }
+  if(action==='assessment-page'){ASSESS_UI.page=Math.max(1,Number(b.dataset.page)||1);paintAssessments();return;}
+  if(action==='assessment-reload'){forgetMenuCache('assessmentList');S.v2.assessmentKey=null;renderAssessments();return;}
   if(action==='assessment-detail'){loadAssessmentDetail(b.dataset.id);return;}
   if(action==='edit-assessment'){editAssessment(b.dataset.id);return;}
   if(action==='clear-assessment'){const f=$('#assessment-form');if(f){f.reset();f.elements.id.value='';f.elements.mapelId.disabled=false;}return;}
@@ -1001,12 +1064,14 @@ document.addEventListener('click',async ev=>{
   if(action==='copy-credential'){try{await navigator.clipboard.writeText(b.dataset.value);toast('Kredensial disalin. Sampaikan secara pribadi.');}catch(e){toast('Gagal menyalin otomatis. Silakan salin teks kredensial.',true);}return;}
 });
 document.addEventListener('input',ev=>{
+ if(ev.target.id==='assessment-search'){ASSESS_UI.query=ev.target.value;ASSESS_UI.page=1;paintAssessments();return;}
  if(ev.target.id==='user-search'){USER_UI.query=ev.target.value;USER_UI.page=1;paintUserList();return;}
  if(ev.target.id==='student-search'){STUDENT_UI.query=ev.target.value;STUDENT_UI.page=1;paintStudentList();return;}
  if(ev.target.id==='family-search'){FAMILY.query=ev.target.value;FAMILY.page=1;paintFamilyList();}
  if(ev.target.id==='family-parent-query'){FAMILY.parentQuery=ev.target.value;FAMILY.selectedParentId='';updateFamilyParentChoices();}
 });
 document.addEventListener('change',ev=>{
+ if(['assessment-filter-subject','assessment-filter-status','assessment-filter-type'].includes(ev.target.id)){const key=({'assessment-filter-subject':'subject','assessment-filter-status':'status','assessment-filter-type':'type'})[ev.target.id];ASSESS_UI[key]=ev.target.value;ASSESS_UI.page=1;paintAssessments();return;}
  if(ev.target.id==='family-class'){FAMILY.classFilter=ev.target.value;FAMILY.page=1;paintFamilyList();return;}
  if(ev.target.id==='family-link-class'){FAMILY.linkClassId=ev.target.value;void updateFamilyStudentChoices();return;}
  if(ev.target.id==='family-parent-select'){FAMILY.selectedParentId=ev.target.value;return;}
@@ -1325,3 +1390,16 @@ document.addEventListener('keydown',ev=>{
 });
 
 document.addEventListener('change',ev=>{if(ev.target?.id==='print-type'){const field=document.getElementById('print-period-field');if(field)field.style.display=ev.target.value==='tahfidzClass'?'block':'none';}},true);
+
+// SIPANDAI v4.6 — Tutup dialog nilai dengan Esc / area luar, tanpa menutup saat penyimpanan berlangsung.
+document.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape'&&document.getElementById('assessment-score-modal')){ev.preventDefault();closeAssessmentModal();}
+  if(ev.key==='Tab'){
+    const modal=document.getElementById('assessment-score-modal');if(!modal)return;
+    const controls=[...modal.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled])')];
+    if(!controls.length)return;
+    if(ev.shiftKey&&document.activeElement===controls[0]){ev.preventDefault();controls.at(-1).focus();}
+    else if(!ev.shiftKey&&document.activeElement===controls.at(-1)){ev.preventDefault();controls[0].focus();}
+  }
+},true);
+document.addEventListener('click',ev=>{if(ev.target?.id==='assessment-score-modal')closeAssessmentModal();});

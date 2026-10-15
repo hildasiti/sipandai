@@ -1295,7 +1295,7 @@ function updatePrintFields(){
   mapel.innerHTML=printSubjectOptions(false);
   if(current&&[...mapel.options].some(x=>x.value===current))mapel.value=current;
  }
- const hint=$('#print-filter-hint');if(hint)hint.textContent=type==='scores'?'Harian + Proyek masuk Rerata Harian. ASTS, ASAS, ASAT terpisah.':type==='attendance'?'Satu siswa per baris, tanggal menjadi kolom. Sel kosong berarti belum ada absensi.':' ';
+ const hint=$('#print-filter-hint');if(hint)hint.textContent=type==='scores'?'AH dibuat otomatis sesuai jumlah asesmen. Proyek masuk Rerata Harian; ASTS/ASAS/ASAT terpisah.':type==='attendance'?'Satu siswa per baris, tanggal menjadi kolom. Sel kosong berarti belum ada absensi.':' ';
 }
 function switchPrintTab(id){
  const group=printGroups().find(g=>g.id===id);if(!group)return;
@@ -1322,26 +1322,59 @@ function printTable(data){
 }
 /* Tabel horizontal: maksimal 12 kolom tanggal per halaman cetak, Excel tetap utuh. */
 function printWorkbook(data){
- const isAttendance=data.type==='attendance',blocks=[];
+ const isAttendance=data.type==='attendance',isScores=data.type==='scores',blocks=[];
  for(const sheet of data.sheets||[]){
-  const heads=sheet.headers||[],rows=sheet.rows||[],fixed=isAttendance?3:0;
-  const partitions=isAttendance&&heads.length>fixed+13?Array.from({length:Math.ceil((heads.length-fixed-((data.mode==='HARIAN')?1:0))/12)},(_,i)=>{
-    const last=data.mode==='HARIAN'?[heads.length-1]:[];
-    const headerPositions=Array.from({length:Math.min(12,heads.length-fixed-last.length-i*12)},(_,j)=>fixed+i*12+j);
-    return [...Array(fixed).keys(),...headerPositions,...last];
-  }):[heads.map((_,i)=>i)];
+  const heads=sheet.headers||[],rows=sheet.rows||[],layout=sheet.scoreLayout||{};
+  const fixed=isAttendance?3:isScores?(layout.identityColumns||0):0;
+  let partitions;
+  if(isAttendance){
+   const trailing=data.mode==='HARIAN'?[heads.length-1]:[];
+   const dateCols=heads.length-fixed-trailing.length;
+   partitions=Array.from({length:Math.max(1,Math.ceil(dateCols/12))},(_,j)=>[
+    ...Array.from({length:fixed},(_,i)=>i),
+    ...Array.from({length:Math.max(0,Math.min(12,dateCols-j*12))},(_,k)=>fixed+j*12+k),
+    ...trailing
+   ]);
+  }else if(isScores){
+   const n=Number(layout.assessmentColumns)||0;
+   const maxColumns=data.scoreMode==='SISWA'?10:8;
+   const last=Array.from({length:heads.length-fixed-n},(_,i)=>fixed+n+i);
+   partitions=Array.from({length:Math.max(1,Math.ceil(n/maxColumns))},(_,j)=>[
+    ...Array.from({length:fixed},(_,i)=>i),
+    ...Array.from({length:Math.max(0,Math.min(maxColumns,n-j*maxColumns))},(_,k)=>fixed+j*maxColumns+k),
+    ...last
+   ]);
+  }else partitions=[heads.map((_,i)=>i)];
   partitions.forEach((indexes,part)=>{
-   const header=`<tr>${indexes.map(i=>`<th>${E(heads[i])}</th>`).join('')}</tr>`;
+   let header;
+   if(isScores&&layout.assessmentColumns>0){
+    const firstCount=fixed,assessCount=indexes.filter(i=>i>=fixed&&i<fixed+layout.assessmentColumns).length;
+    const leading=indexes.slice(0,firstCount),trailing=indexes.slice(firstCount+assessCount);
+    header=`<tr>${leading.map(i=>`<th rowspan="2">${E(heads[i])}</th>`).join('')}
+      ${assessCount?`<th colspan="${assessCount}" class="sip-score-group-title">Jenis Asesmen</th>`:''}
+      ${trailing.map(i=>`<th rowspan="2">${E(heads[i])}</th>`).join('')}</tr>
+      <tr>${indexes.slice(firstCount,firstCount+assessCount).map(i=>`<th>${E(heads[i])}</th>`).join('')}</tr>`;
+   }else header=`<tr>${indexes.map(i=>`<th>${E(heads[i])}</th>`).join('')}</tr>`;
    const body=rows.map(row=>`<tr>${indexes.map(i=>{
-     const raw=row[i];const value=isAttendance&&i>=fixed&&(data.mode!=='HARIAN'||i!==heads.length-1)?({Hadir:'H',Sakit:'S',Izin:'I',Alpa:'A'}[raw]||raw):raw;
-     return `<td${i===2?' class="sip-print-name"':''}>${E(value??'')}</td>`;
+     const raw=row[i];let value=isAttendance&&i>=fixed&&(data.mode!=='HARIAN'||i!==heads.length-1)?({Hadir:'H',Sakit:'S',Izin:'I',Alpa:'A'}[raw]||raw):raw;
+     if(isScores&&i===heads.length-(layout.hasFeedback?2:1)&&typeof value==='number')value=value.toLocaleString('id-ID',{maximumFractionDigits:2});
+     const isName=(isAttendance||data.scoreMode==='MAPEL')?i===2:i===1;
+     const numeric=isScores&&i>=fixed&&i<fixed+Number(layout.assessmentColumns||0)||isScores&&i===heads.length-(layout.hasFeedback?2:1);
+     return `<td${isName?' class="sip-print-name"':numeric?' class="sip-score-number"':''}>${E(value??'')}</td>`;
    }).join('')}</tr>`).join('');
-   const label=`${sheet.title||sheet.name||'Rekap'}${partitions.length>1?` · Bagian ${part+1}/${partitions.length}`:''}`;
-   blocks.push(`<section class="sip-wide-sheet"><h2>${E(label)}</h2><div class="sip-doc-table-scroll"><table class="sip-print-table sip-wide-table"><thead>${header}</thead><tbody>${body}</tbody></table></div>${isAttendance?'<p class="sip-doc-small">H = Hadir · S = Sakit · I = Izin · A = Alpa · Kosong = belum tercatat</p>':''}</section>`);
+   const label=sheet.title||sheet.name||'Rekap';
+   const suffix=partitions.length>1?` · Bagian ${part+1}/${partitions.length}`:'';
+   blocks.push(`<section class="sip-wide-sheet${isScores?' sip-score-sheet':''}"><h2>${E(label+suffix)}</h2><div class="sip-doc-table-scroll"><table class="sip-print-table sip-wide-table${isScores?' sip-grade-table':''}"><thead>${header}</thead><tbody>${body}</tbody></table></div>
+    ${isAttendance?'<p class="sip-doc-small">H = Hadir · S = Sakit · I = Izin · A = Alpa · Kosong = belum tercatat</p>':''}</section>`);
   });
  }
- const subtitle=`Kelas ${data.className||'-'} · ${data.from||'Semua tanggal'} s.d. ${data.to||'Hari ini'}`;
- return sipDocShell(data.title||PRINT_TITLES[data.type],subtitle,blocks.join(''),`<div><strong>${(data.sheets||[]).length}</strong><small>Tabel / mata pelajaran</small></div>`,true);
+ if(isScores){
+  blocks.push(`<section class="sip-grade-notes"><b>Catatan:</b><div><b>AH</b> = Asesmen Harian; jumlah AH menyesuaikan data yang ada.</div><div><b>Proyek</b> ikut dalam Rerata Harian.</div><div><b>ASAS</b> = Asesmen Akhir Semester (semester ganjil).</div><div><b>ASAT</b> = Asesmen Akhir Tahun (semester genap).</div><div><b>Rerata Harian</b> hanya dari AH dan Proyek yang sudah dinilai.</div></section>`);
+ }
+ const subtitle=`Kelas ${data.className||'-'}${isAttendance?' · Rekap kehadiran':''}`;
+ const printDate=x=>/^\d{4}-\d{2}-\d{2}$/.test(x||'')?x.slice(8,10)+'/'+x.slice(5,7)+'/'+x.slice(0,4):x;
+ const meta=`<div><strong>${E(printDate(data.from)||'Semua tanggal')}</strong><small>Dari tanggal</small></div><div><strong>${E(printDate(data.to)||'Sekarang')}</strong><small>Sampai tanggal</small></div>`;
+ return sipDocShell(data.title||PRINT_TITLES[data.type],subtitle,blocks.join(''),meta,true);
 }
 function printTahSummary(t){
  if(!t)return '';
@@ -1402,7 +1435,12 @@ document.addEventListener('submit',async ev=>{
  try{busy(true);const data=await call('printData',{...fd,classId:S.classId});previewPrint(data);}catch(err){toast('Gagal membuat laporan: '+err.message,true);}finally{busy(false);}
 },true);
 document.addEventListener('change',ev=>{
- if(S.view==='printing'&&['print-type','print-score-mode','print-att-mode'].includes(ev.target?.id))updatePrintFields();
+ if(S.view==='printing'&&ev.target?.closest?.('#print-form')){
+  if(['print-type','print-score-mode','print-att-mode'].includes(ev.target.id))updatePrintFields();
+  printableData=null;
+  const preview=$('#print-preview');
+  if(preview)preview.innerHTML=empty('Filter berubah. Klik Buat Pratinjau untuk laporan terbaru.');
+ }
 },true);
 document.addEventListener('click',ev=>{
  const b=ev.target.closest('[data-action]');if(!b)return;

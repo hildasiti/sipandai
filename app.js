@@ -1,4 +1,4 @@
-console.info('SIPANDAI v4.12.2 — Ringkasan Tahfidz responsif tanpa tombol per siswa.');
+console.info('SIPANDAI v4.14 — Ringkasan Tahfidz responsif tanpa tombol per siswa.');
 'use strict';
 const S={token:'',user:null,home:null,view:'dashboard',classId:'',childId:'',additional:{},att:null,attEdit:false,attMode:'HARIAN',attDate:'',attMapel:'',sessionNo:'1',busy:false,menuCache:new Map(),needsHome:false,attRequest:0,learningTab:'journal'};
 try { S.token=sessionStorage.getItem('sipandai_token')||''; } catch(e) {}
@@ -231,32 +231,37 @@ function loginUI(){S.user=null;$('#app').innerHTML=`<div class="login-wrap"><div
 function passwordUI(){ $('#app').innerHTML=`<div class="login-wrap"><div class="login-card"><div class="brand"><img class="logo" src="./icons/sipandai-logo6-256.png" alt="Logo SIPANDAI"><b class="logo-name">SIPANDAI</b></div><h1>Ganti password awal</h1><p class="muted">Untuk menjaga data siswa, password sementara wajib diganti sebelum mengakses aplikasi.</p>${changePasswordForm()}<button class="btn btn-outline btn-full section-gap" data-action="logout">Keluar akun</button></div></div>`;}
 function changePasswordForm(){return `<form id="change-password-form"><div class="field"><label class="label">Password saat ini</label><input type="password" name="oldPassword" required autocomplete="current-password"></div><div class="field"><label class="label">Password baru</label><input type="password" name="newPassword" minlength="5" required autocomplete="new-password" placeholder="Minimal 5 karakter; angka, huruf, atau campuran"></div><button class="btn btn-primary" type="submit">Simpan password baru</button></form>`;}
 async function loadHome(){const home=await call('home',{classId:S.classId,childId:S.childId});S.needsHome=false;S.home=home;S.user=home.user;if(S.user.role==='GURU_MAPEL')S.attMode='MAPEL';S.classId=home.classId;S.childId=home.currentChild?.id||'';if(S.user.mustChangePassword){passwordUI();return;}baseUI();render();}
+// SIPANDAI v4.14 — muat data opsional satu per satu hanya ketika Beranda sedang idle.
+// Hindari 2 API berjalan bersamaan segera setelah login (terutama saat Google ContentService tidak stabil).
+let sipPrefetchTimer=null;
+let sipPrefetchSequence=0;
 function prefetchTodayAttendance(){
-  if(!role('ADMIN','GURU_KELAS','GURU_MAPEL')||!S.home?.classId)return;
-  const m=role('GURU_MAPEL')?'MAPEL':'HARIAN';
-  const s=(S.home.subjects||[])[0]?.id||'';
-  if(m==='MAPEL'&&!s)return;
-  const identity=S.user?.id,klass=S.classId,day=S.home.serverDate;
-  // Background only: never hold up login, never render over an open form.
-  setTimeout(()=>{
-    if(!S.user||S.user.id!==identity||S.classId!==klass||S.home?.serverDate!==day)return;
-    cachedCall('attendance',{classId:klass,date:day,mode:m,mapelId:s||'',sessionNo:S.sessionNo},45000).catch(()=>{});
-  },450);
+  const generation=++sipPrefetchSequence;
+  if(sipPrefetchTimer)clearTimeout(sipPrefetchTimer);
+  if(!S.user||!S.home||!S.classId)return;
+  const uid=S.user.id,classId=S.classId,day=S.home.serverDate;
+  const eligible=()=>generation===sipPrefetchSequence&&S.user?.id===uid&&
+    S.classId===classId&&S.home?.serverDate===day&&S.view==='dashboard'&&
+    document.visibilityState==='visible'&&!S.busy&&Boolean(S.token);
+  sipPrefetchTimer=setTimeout(async()=>{
+    if(!eligible())return;
+    if(role('ADMIN','GURU_KELAS','GURU_MAPEL')){
+      const mode=role('GURU_MAPEL')?'MAPEL':'HARIAN';
+      const subject=(S.home.subjects||[])[0]?.id||'';
+      if(mode==='HARIAN'||subject){
+        try{await cachedCall('attendance',{classId,date:day,mode,mapelId:subject,sessionNo:S.sessionNo},45000);}catch(_){/* optional prefetch */}
+      }
+    }
+    if(!eligible()||role('ORANG_TUA'))return;
+    // Delay again before Tahfidz; never overlap with attendance prefetch.
+    await new Promise(resolve=>setTimeout(resolve,1000));
+    if(!eligible())return;
+    const period=(day||'').slice(0,7),payload={classId,period};
+    if(period){try{await fetchTahDashboard(payload,45000);}catch(_){/* optional prefetch */}}
+  },5000);
 }
-// v4.12 — Persiapkan ringkasan Tahfidz sesudah Beranda tampil; satu request.
-// Tidak menyimpan data pribadi secara persisten, dan hasil hanya berada di memori sesi.
-function prefetchTahfidz(){
-  if(!S.user||!S.home||role('ORANG_TUA')||!S.classId)return;
-  const userId=S.user.id,classId=S.classId,period=(S.home.serverDate||'').slice(0,7);
-  setTimeout(()=>{
-    if(!S.user||S.user.id!==userId||S.classId!==classId||!S.token||!period)return;
-    // Prefetch tetap berjalan setelah guru berpindah menu; hasilnya dibatasi akun/kelas.
-    const payload={classId,period};
-    const key=menuCacheKey('tahDashboard',payload);
-    if(S.menuCache.has(key)||pendingMenuRequests.has(key))return;
-    fetchTahDashboard(payload,45000).catch(()=>{});
-  },1600);
-}
+function prefetchTahfidz(){/* scheduled serially by prefetchTodayAttendance() */}
+
 function render(){if(!S.home)return;document.querySelectorAll('[data-action=nav]').forEach(el=>el.classList.toggle('active',el.dataset.view===S.view||(el.dataset.view==='learning'&&isLearningView(S.view))));switch(S.view){case 'tahfidz':return renderTahfidz();case 'journal':return renderJournal();case 'assessments':return renderAssessments();case 'tasks':return renderTasks();case 'progress':return renderProgress();case 'dashboard':return renderDashboard();case 'printing':if(role('ORANG_TUA')){S.view='dashboard';return renderDashboard();}return renderPrinting();case 'notices':return renderNotices();case 'attendance':return renderAttendance();case 'behaviors':return renderBehaviors();case 'students':return renderStudents();case 'teachers':return renderTeachers();case 'parents':return renderParents();case 'requests':S.view='parents';FAMILY.tab='requests';return renderParents();case 'users':return renderUsers();case 'classes':return renderClasses();case 'settings':return renderSettings();default:S.view='dashboard';renderDashboard();}}
 const LEARNING_VIEWS=['attendance','journal','assessments','tasks','behaviors'];
 function isLearningView(id){return LEARNING_VIEWS.includes(id);}
@@ -1280,7 +1285,7 @@ document.addEventListener('click',async ev=>{
   }
   if(action==='task-file'){openTaskFile(b.dataset.id);return;}
   if(action==='mobile-more'){toggleMobileMore();return;}
-  if(action==='logout'){tahDashboardUseLegacy=false;busy(true);processMessage('Mengakhiri sesi…');try{if(S.token)await call('logout');}catch(e){}finally{busy(false);}S.token='';S.user=null;S.home=null;S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';PARENT_GRADE_UI.report=null;PARENT_GRADE_UI.key='';PARENT_GRADE_UI.period='ALL';S.menuCache.clear();FAMILY.list=[];FAMILY.students=null;FAMILY.requests=null;FAMILY.query='';FAMILY.classFilter='';clearTahDom();S.needsHome=false;try{sessionStorage.removeItem('sipandai_token');}catch(e){}loginUI();return;}
+  if(action==='logout'){++sipPrefetchSequence;if(sipPrefetchTimer)clearTimeout(sipPrefetchTimer);tahDashboardUseLegacy=false;busy(true);processMessage('Mengakhiri sesi…');try{if(S.token)await call('logout');}catch(e){}finally{busy(false);}S.token='';S.user=null;S.home=null;S.v2.journalKey=null;S.v2.assessmentKey=null;S.v2.taskKey=null;S.v2.journal=[];S.v2.assessments=[];S.v2.tasks=[];S.progress.report=null;S.progress.lastKey='';PARENT_GRADE_UI.report=null;PARENT_GRADE_UI.key='';PARENT_GRADE_UI.period='ALL';S.menuCache.clear();FAMILY.list=[];FAMILY.students=null;FAMILY.requests=null;FAMILY.query='';FAMILY.classFilter='';clearTahDom();S.needsHome=false;try{sessionStorage.removeItem('sipandai_token');}catch(e){}loginUI();return;}
   if(action==='switch-child'){clearTahDom();S.progress.lastKey='';PARENT_GRADE_UI.report=null;PARENT_GRADE_UI.key='';PARENT_GRADE_UI.period='ALL';++PARENT_GRADE_UI.requestId;S.childId=b.dataset.id;S.v2.assessmentId='';S.v2.taskId='';S.classId=(S.home.children.find(x=>x.id===S.childId)||{}).classId||S.classId;try{await loadHome();}catch(e){toast(e.message,true);}return;}
   if(action==='confirm-notice'){const result=await submitAction('confirmNotice',{noticeId:b.dataset.id},{refresh:false});if(result){closeNoticeDialog();S.home.notices=S.home.notices.map(x=>x.id===b.dataset.id?{...x,confirmed:true}:x);render();toast('Konfirmasi pengumuman tersimpan.');}return;}
   if(action==='publish-notice')return submitAction('publishNotice',{id:b.dataset.id});

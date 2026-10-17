@@ -1047,7 +1047,7 @@ document.addEventListener('invalid',ev=>{
   }
 },true);
 document.addEventListener('submit',async ev=>{
-  const f=ev.target;const formId=f?.getAttribute?.('id');if(!formId)return;ev.preventDefault();if(S.busy){toast('Sedang menyimpan data sebelumnya. Tunggu sebentar.');return;}
+  const f=ev.target;const formId=f?.getAttribute?.('id');if(!formId||formId==='print-form')return;ev.preventDefault();if(S.busy){toast('Sedang menyimpan data sebelumnya. Tunggu sebentar.');return;}
   const d=fd(f);
   if(formId==='subject-owners-form'){
     const owners=[...f.querySelectorAll('[data-mapel-id]')].map(x=>({mapelId:x.dataset.mapelId,teacherId:x.value}));
